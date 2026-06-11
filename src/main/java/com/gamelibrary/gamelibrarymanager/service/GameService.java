@@ -1,4 +1,6 @@
 package com.gamelibrary.gamelibrarymanager.service;
+import com.gamelibrary.gamelibrarymanager.exception.JogoNaoDeletadoException;
+import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +30,7 @@ public class GameService{
                 return jogo;
             }
         }
-        return null;
+        throw new JogoNaoEncontradoException(id);
 
     }
 
@@ -46,7 +48,7 @@ public class GameService{
                 return jogo;
             }
         }
-        return null;
+        throw new JogoNaoEncontradoException(id);
     }
 
     public boolean deleteJogo(Long id){
@@ -56,7 +58,7 @@ public class GameService{
                 return true;
             }
         }
-        return false;
+        throw new JogoNaoDeletadoException(id);
     }
 
     public Jogo ativarPlatina(Long id, Platina platina){
@@ -67,6 +69,6 @@ public class GameService{
                 return jogo;
             }
         }
-        return null;
+        throw new JogoNaoEncontradoException(id);
     }
 }

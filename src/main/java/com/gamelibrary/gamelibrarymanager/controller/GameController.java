@@ -2,6 +2,7 @@ package com.gamelibrary.gamelibrarymanager.controller;
 
 import com.gamelibrary.gamelibrarymanager.dto.JogoRequestDTO;
 import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
+import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 import com.gamelibrary.gamelibrarymanager.service.GameService;
@@ -46,9 +47,6 @@ public class GameController {
     @GetMapping("/{id}")
     public JogoResponseDTO buscaID(@PathVariable Long id) {
        Jogo jogo = gameService.buscarPorId(id);
-       if  (jogo == null) {
-           return null;
-       }
        return JogoResponseDTO.fromJogo(jogo);
     }
 
@@ -56,28 +54,18 @@ public class GameController {
     public JogoResponseDTO atualizarJogo(@PathVariable Long id, @RequestBody JogoRequestDTO jogo) {
         Jogo request = jogo.toJogo();
         Jogo jogoatualizado = gameService.atualizarJogo(id, request);
-        if (jogoatualizado == null) {
-            return null;
-        }
-
         return JogoResponseDTO.fromJogo(jogoatualizado);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> excluirJogo(@PathVariable Long id) {
-        if(gameService.deleteJogo(id)){
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        gameService.deleteJogo(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}/platina")
     public ResponseEntity<JogoResponseDTO> ativarPlatina(@PathVariable Long id, @RequestBody Platina platina) {
         Jogo jogo = gameService.ativarPlatina(id, platina);
-
-        if (jogo == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(JogoResponseDTO.fromJogo(jogo));
 
     }
