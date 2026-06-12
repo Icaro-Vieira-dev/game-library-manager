@@ -2,15 +2,33 @@ package com.gamelibrary.gamelibrarymanager.dto;
 
 import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
+import jakarta.validation.constraints.*;
 
 public class JogoRequestDTO {
+    @NotBlank(message = "O campo nome não pode estar vazio")
     private String nomeJogo;
+
+    @NotBlank(message = "O campo genero não pode estar vazio!")
     private String generoJogo;
+
+    @NotBlank(message = "O campo Plataforma não pode estar vazio")
     private String plataformaJogo;
+
+    @Min(value = 1958, message = "Lançamento do primeiro jogo foi em 1958, por isso aceitamos jogos com no mínimo esse ano!")
+    @Max(value = 2026, message = "Está prevendo o futuro amigão ?")
     private int anoLancamentoJogo;
+
+    @Positive(message = "Campo horas jogadas devem ser horas positivas.")
     private double horasJogadas;
+
+    @NotNull(message = "Não pode ser vazio, valores aceitos são: JOGANDO, FINALIZADO, ABANDONADO, PLANEJADO")
     private GameStatus statusJogo;
+
+    @Positive(message = "A nota não pode ser negativas")
+    @Min(value = 1, message = "A nota deve ser 1 ou 10")
+    @Max(value = 10, message = "A nota maxima é 10")
     private double notaJogo;
+
     private String desenvolvedoraJogo;
 
 

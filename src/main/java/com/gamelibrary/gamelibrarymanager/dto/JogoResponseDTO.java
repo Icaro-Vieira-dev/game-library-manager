@@ -1,10 +1,12 @@
 package com.gamelibrary.gamelibrarymanager.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 
+@JsonPropertyOrder({"idJogo", "nomeJogo", "generoJogo", "plataformaJogo", "anoLancamentoJogo", "horasJogadas", "statusJogo", "notaJogo", "desenvolvedoraJogo"})
 public class JogoResponseDTO {
     private Long idJogo;
     private String nomeJogo;

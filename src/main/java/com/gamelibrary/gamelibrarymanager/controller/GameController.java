@@ -6,6 +6,7 @@ import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 import com.gamelibrary.gamelibrarymanager.service.GameService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
+
 
 @RestController
 @RequestMapping("/jogos")
@@ -38,20 +40,20 @@ public class GameController {
     }
 
     @PostMapping
-    public JogoResponseDTO criarJogos(@RequestBody JogoRequestDTO dto) {
+    public JogoResponseDTO criarJogos(@Valid @RequestBody JogoRequestDTO dto) {
         Jogo jogo = dto.toJogo();
         Jogo jogosalvo = gameService.criarJogo(jogo);
         return JogoResponseDTO.fromJogo(jogosalvo);
     }
 
     @GetMapping("/{id}")
-    public JogoResponseDTO buscaID(@PathVariable Long id) {
+    public JogoResponseDTO buscaID(@Valid @PathVariable Long id) {
        Jogo jogo = gameService.buscarPorId(id);
        return JogoResponseDTO.fromJogo(jogo);
     }
 
     @PutMapping("/{id}")
-    public JogoResponseDTO atualizarJogo(@PathVariable Long id, @RequestBody JogoRequestDTO jogo) {
+    public JogoResponseDTO atualizarJogo(@PathVariable Long id,@Valid @RequestBody JogoRequestDTO jogo) {
         Jogo request = jogo.toJogo();
         Jogo jogoatualizado = gameService.atualizarJogo(id, request);
         return JogoResponseDTO.fromJogo(jogoatualizado);
