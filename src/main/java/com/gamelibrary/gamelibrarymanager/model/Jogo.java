@@ -1,17 +1,26 @@
 package com.gamelibrary.gamelibrarymanager.model;
+import jakarta.persistence.*;
 
+@Entity
+@Table(name = "Jogos")
 public class Jogo {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long idJogo;
     private String nomeJogo;
     private String generoJogo;
     private String plataformaJogo;
     private int anoLancamentoJogo;
     private double horasJogadas;
+    @Enumerated(EnumType.STRING)
     private GameStatus statusJogo;
     private double notaJogo;
     private String desenvolvedoraJogo;
+    @Transient
     private Platina platina;
 
+
+    public Jogo (){}
 
     public Jogo(String nomeJogo, GameStatus status, String generoJogo, String plataformaJogo, String desenvolvedoraJogo, int anoLancamentoJogo, double horasJogadas, double notaJogo) {
         this.nomeJogo = nomeJogo;
