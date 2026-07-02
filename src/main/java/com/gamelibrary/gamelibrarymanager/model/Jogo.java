@@ -19,6 +19,9 @@ public class Jogo {
     @Transient
     private Platina platina;
 
+    @ManyToOne
+    @JoinColumn(name="categoria_id")
+    private Categoria categoria;
 
     public Jogo (){}
 
@@ -72,6 +75,14 @@ public class Jogo {
 
     public Platina getPlatina() {
         return platina;
+    }
+
+    public Categoria getCategoria() {
+        return categoria;
+    }
+
+    public void setCategoria(Categoria categoria) {
+        this.categoria = categoria;
     }
 
     //Setters.

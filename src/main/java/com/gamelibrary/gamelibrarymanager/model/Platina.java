@@ -1,7 +1,5 @@
 package com.gamelibrary.gamelibrarymanager.model;
 
-import jakarta.validation.constraints.Positive;
-
 public class Platina {
     private boolean platinaAtiva;
     private int conquistaObtida;

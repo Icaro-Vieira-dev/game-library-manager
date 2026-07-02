@@ -1,6 +1,7 @@
 package com.gamelibrary.gamelibrarymanager.service;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoDeletadoException;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
+import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 import com.gamelibrary.gamelibrarymanager.repository.JogoRepository;
@@ -56,10 +57,35 @@ public class GameService{
         return true;
     }
 
+    public boolean deleteAll(){
+        jogoRepository.deleteAll();
+        return true;
+    }
+
     public Jogo ativarPlatina(Long id, Platina platina){
         Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
         platina.setPlatinaAtiva(true);
         jogo.setPlatina(platina);
         return jogoRepository.save(jogo);
     }
+
+    public List<Jogo>buscarGenero(String genero){
+        return jogoRepository.findByGeneroJogo(genero);
+    }
+
+    public List<Jogo>buscarJogoPorPlataforma(String plataforma){
+        return jogoRepository.findByPlataformaJogo(plataforma);
+    }
+
+    public List<Jogo>buscarJogoPorNome(String nome){
+        return jogoRepository.findByNomeJogoContainingIgnoreCase(nome);
+
+    }
+    public List<Jogo>buscarJogoPorAnoLancamento(int anoLancamento){
+        return jogoRepository.findByAnoLancamentoJogo(anoLancamento);
+    }
+    public List<Jogo>buscarJogoPorStatus(GameStatus status){
+        return jogoRepository.findByStatusJogo(status);
+    }
+
 }

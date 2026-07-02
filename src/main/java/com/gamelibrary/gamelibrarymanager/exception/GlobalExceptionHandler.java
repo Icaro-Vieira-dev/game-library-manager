@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(404).body(ex.getMessage());
     }
 
+    @ExceptionHandler(CategoriaNaoEncontrada.class)
+    public ResponseEntity<String> handleCategoriaNaoEncontrada(CategoriaNaoEncontrada ex) {
+        return ResponseEntity.status(404).body(ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidationErrors(MethodArgumentNotValidException ex) {
         Map<String, String> erros = new HashMap<>();
