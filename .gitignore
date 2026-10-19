@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+.aider*
+
+### Segredos (API key da Steam etc.) ###
+.env
+
+### Anotações pessoais (registro detalhado das mudanças) ###
+MUDANCAS.md

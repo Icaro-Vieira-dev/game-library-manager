@@ -5,11 +5,13 @@ API REST para gerenciar sua biblioteca pessoal de jogos com integração direta 
 ## Funcionalidades
 
 - Cadastro, edição e remoção de jogos manualmente
-- Importação automática da biblioteca da Steam via API
+- Importação automática da biblioteca da Steam via API, sem duplicar jogos já importados
+- Status definido automaticamente na importação, a partir das horas jogadas
 - Organização por categorias
 - Controle de status de cada jogo (jogando, finalizado, abandonado, planejado)
 - Sistema de avaliação (nota de 1 a 10)
-- Rastreamento de conquistas/platina por jogo
+- Meta de platina por jogo (opcional), com o progresso de conquistas buscado na Steam
+- Checklist de conquistas: o que já foi feito e o que falta
 - Busca por nome, gênero, plataforma, status e ano de lançamento
 
 ## Tecnologias
@@ -38,13 +40,36 @@ password: admin
 
 O Hibernate cria as tabelas automaticamente (`ddl-auto=update`).
 
+## Configuração da Steam
+
+A chave da API e o seu Steam ID ficam num arquivo `.env` na raiz do projeto. Esse arquivo está no `.gitignore`, então a sua chave nunca vai para o GitHub.
+
+1. Copie o modelo: `cp .env.example .env`
+2. Preencha os valores, sem aspas e sem espaços:
+
+```
+STEAM_API_KEY=sua_chave
+STEAM_ID=76561198xxxxxxxxx
+```
+
+- **API Key:** [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
+- **Steam ID:** use o SteamID64, com 17 dígitos e começando com `7656`. Ele aparece em [steamid.io](https://steamid.io).
+
 ## Como rodar
 
 ```bash
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
 
 A API sobe em `http://localhost:8080`.
+
+## Testes
+
+```bash
+./mvnw test -Dtest=SteamServiceStatusTest
+```
+
+São testes unitários da regra de status da importação. Eles rodam sem banco e sem acessar a Steam.
 
 ---
 
@@ -60,7 +85,9 @@ A API sobe em `http://localhost:8080`.
 | PUT | `/jogos/{id}` | Atualiza jogo por ID |
 | DELETE | `/jogos/{id}` | Remove jogo por ID |
 | DELETE | `/jogos/deleteAllJogos` | Remove todos os jogos |
-| PUT | `/jogos/{id}/platina` | Ativa rastreamento de conquistas/platina |
+| PUT | `/jogos/{id}/platina` | Define a meta de platina; em jogos da Steam, busca o progresso automaticamente |
+| DELETE | `/jogos/{id}/platina` | Remove a platina e o checklist (o jogo não é apagado) |
+| GET | `/jogos/{id}/conquistas?concluida=` | Checklist de conquistas (`concluida=false` mostra só as que faltam) |
 | GET | `/jogos/buscar/nome?nome=` | Busca por nome (parcial, case-insensitive) |
 | GET | `/jogos/buscar/genero?genero=` | Busca por gênero |
 | GET | `/jogos/buscar/plataforma?plataforma=` | Busca por plataforma |
@@ -103,19 +130,33 @@ A API sobe em `http://localhost:8080`.
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| POST | `/importSteam/importar?steamId=&apiKey=` | Importa todos os jogos da biblioteca Steam |
+| POST | `/importSteam/importar` | Importa a biblioteca da Steam do `STEAM_ID` configurado no `.env` |
+| POST | `/importSteam/importar?steamId=` | Importa a biblioteca de outro perfil |
 
-**Como usar:**
-
-1. Obtenha sua **Steam API Key** em [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
-2. Descubra seu **Steam ID** em [steamidfinder.com](https://steamidfinder.com) ou no seu perfil da Steam
-3. Faça a requisição:
+**Como usar:** configure o `.env` (veja [Configuração da Steam](#configuração-da-steam)) e faça a requisição:
 
 ```http
-POST /importSteam/importar?steamId=SEU_STEAM_ID&apiKey=SUA_API_KEY
+POST http://localhost:8080/importSteam/importar
 ```
 
-O sistema consulta a API da Steam, converte o tempo de jogo de minutos para horas e salva todos os jogos com status `PLANEJADO`. Após a importação, você pode editar cada jogo individualmente para adicionar nota, gênero, etc.
+**O que a importação faz:**
+
+- Converte o tempo de jogo de minutos para horas.
+- **Não duplica:** cada jogo guarda o seu `steamAppId`, e os jogos que já foram importados são ignorados. A resposta traz só os jogos novos (`[]` se não houver nada novo).
+- **Define o status inicial** de cada jogo:
+
+| Situação na Steam | Status |
+|---|---|
+| Nunca jogou | `PLANEJADO` |
+| Jogou nas últimas 2 semanas | `JOGANDO` |
+| Não joga há 2 semanas e tem 10h ou mais | `FINALIZADO` |
+| Não joga há 2 semanas e tem menos de 10h | `ABANDONADO` |
+
+> O status é uma estimativa baseada nas horas jogadas. Jogos online, ou zerados em poucas horas, podem precisar de ajuste manual com `PUT /jogos/{id}`.
+
+**Erros (422, com mensagem explicando o que fazer):** chave não configurada ou recusada pela Steam, Steam ID fora do formato de 17 dígitos, ou perfil com os detalhes de jogo privados.
+
+Depois de importar, você pode editar cada jogo para adicionar nota, gênero etc.
 
 ---
 
@@ -134,18 +175,53 @@ O sistema consulta a API da Steam, converte o tempo de jogo de minutos para hora
 | statusJogo | Enum | Status atual |
 | notaJogo | double | Avaliação (1–10) |
 | desenvolvedoraJogo | String | Desenvolvedora |
-| platina | Platina | Dados de conquistas (opcional) |
+| steamAppId | Long | ID do jogo na Steam (único; vazio em jogos cadastrados manualmente) |
+| platina | Platina | Meta de platina e conquistas (opcional; não aparece se não foi definida) |
 | categoria | Categoria | Categoria do jogo |
 
 ### Platina / Conquistas
 
-```json
-{
-  "platinaAtiva": true,
-  "conquistaObtida": 45,
-  "totalConquista": 60
-}
+A platina é **opcional**. Ela marca se você tem a meta de platinar o jogo (`platinaAtiva`) e quanto já avançou.
+
+**Jogos importados da Steam:** basta ativar. A API busca as conquistas na Steam, preenche os números e monta o checklist.
+
+```http
+PUT http://localhost:8080/jogos/{id}/platina
+{ "platinaAtiva": true }
 ```
+
+Para atualizar o progresso depois de desbloquear mais conquistas, é só chamar de novo.
+
+**Jogos de outras plataformas** (cadastrados à mão): informe os números.
+
+```json
+{ "platinaAtiva": true, "conquistaObtida": 45, "totalConquista": 60 }
+```
+
+- `platinaAtiva` é obrigatório: `true` ativa a meta, e `false` desiste dela sem apagar o progresso.
+- `conquistaObtida` e `totalConquista` são opcionais, mas vão juntos. As obtidas não podem passar do total.
+- Se você mandar os números, eles valem mais que os da Steam.
+
+**Na resposta**, a platina ganha dois campos calculados: `conquistaRestante` (quantas faltam) e `platinado` (`true` quando obtidas = total).
+
+**Erros (422):** o jogo não tem conquistas na Steam, ou os detalhes de jogo do seu perfil estão privados.
+
+### Checklist de conquistas
+
+```http
+GET http://localhost:8080/jogos/{id}/conquistas?concluida=false
+```
+
+```json
+[
+  { "nome": "Lorde Prístino", "descricao": "", "concluida": false },
+  { "nome": "Portador de Fragmento, Godrick", "descricao": "", "concluida": true, "dataDesbloqueio": "2025-01-05T04:13:38Z" }
+]
+```
+
+- Sem o parâmetro `concluida`, a lista traz todas as conquistas; com `true`, só as feitas; com `false`, só as que faltam.
+- Nomes e descrições vêm em português quando o jogo tem tradução.
+- Conquistas secretas vêm com a descrição vazia, porque a Steam esconde esse texto.
 
 ---
 
@@ -163,24 +239,37 @@ src/main/java/com/gamelibrary/gamelibrarymanager/
 │   └── SteamService.java
 ├── repository/
 │   ├── JogoRepository.java
-│   └── CategoriaRepository.java
+│   ├── CategoriaRepository.java
+│   └── ConquistaRepository.java
 ├── model/
 │   ├── Jogo.java
 │   ├── Categoria.java
 │   ├── Platina.java
+│   ├── Conquista.java
 │   └── GameStatus.java (enum)
 ├── dto/
 │   ├── JogoRequestDTO.java
 │   ├── JogoResponseDTO.java
 │   ├── CategoryRequestDTO.java
 │   ├── CategoryResponseDTO.java
+│   ├── PlatinaRequestDTO.java
+│   ├── ConquistaResponseDTO.java
 │   └── steam/
 │       ├── SteamGameDTO.java
-│       └── SteamResponseDTO.java
+│       ├── SteamResponseDTO.java
+│       ├── SteamConquistaDTO.java
+│       └── SteamConquistasResponseDTO.java
 ├── exception/
 │   ├── GlobalExceptionHandler.java
 │   ├── JogoNaoEncontradoException.java
 │   ├── JogoNaoDeletadoException.java
-│   └── CategoriaNaoEncontrada.java
+│   ├── CategoriaNaoEncontrada.java
+│   └── SteamImportacaoException.java
 └── AppConfig.java
+
+src/test/java/com/gamelibrary/gamelibrarymanager/
+└── service/
+    └── SteamServiceStatusTest.java
 ```
+
+Na raiz do projeto, o `.env.example` é o modelo do `.env` (veja [Configuração da Steam](#configuração-da-steam)).

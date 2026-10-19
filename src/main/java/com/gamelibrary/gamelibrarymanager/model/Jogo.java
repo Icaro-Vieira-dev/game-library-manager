@@ -16,7 +16,11 @@ public class Jogo {
     private GameStatus statusJogo;
     private double notaJogo;
     private String desenvolvedoraJogo;
-    @Transient
+    // null para jogos cadastrados manualmente; único para não importar o mesmo jogo da Steam duas vezes
+    @Column(unique = true)
+    private Long steamAppId;
+    // opcional: null enquanto você não definir uma platina para o jogo
+    @Embedded
     private Platina platina;
 
     @ManyToOne
@@ -75,6 +79,14 @@ public class Jogo {
 
     public Platina getPlatina() {
         return platina;
+    }
+
+    public Long getSteamAppId() {
+        return steamAppId;
+    }
+
+    public void setSteamAppId(Long steamAppId) {
+        this.steamAppId = steamAppId;
     }
 
     public Categoria getCategoria() {

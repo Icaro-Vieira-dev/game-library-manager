@@ -19,6 +19,9 @@ public class JogoResponseDTO {
     private String desenvolvedoraJogo;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Long steamAppId;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private Platina platina;
 
 
@@ -59,6 +62,10 @@ public class JogoResponseDTO {
 
     public String getDesenvolvedoraJogo() {
         return desenvolvedoraJogo;
+    }
+
+    public Long getSteamAppId() {
+        return steamAppId;
     }
 
     public Platina getPlatina() {
@@ -103,6 +110,10 @@ public class JogoResponseDTO {
         this.desenvolvedoraJogo = desenvolvedoraJogo;
     }
 
+    public void setSteamAppId(Long steamAppId) {
+        this.steamAppId = steamAppId;
+    }
+
     public void setPlatina(Platina platina) {
         this.platina = platina;
     }
@@ -119,6 +130,7 @@ public class JogoResponseDTO {
         dto.setStatusJogo(jogo.getStatusJogo());
         dto.setNotaJogo(jogo.getNotaJogo());
         dto.setDesenvolvedoraJogo(jogo.getDesenvolvedoraJogo());
+        dto.setSteamAppId(jogo.getSteamAppId());
         dto.setPlatina(jogo.getPlatina());
 
         return dto;
