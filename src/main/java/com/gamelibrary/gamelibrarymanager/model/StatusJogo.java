@@ -1,5 +1,5 @@
 package com.gamelibrary.gamelibrarymanager.model;
 
-public enum GameStatus {
+public enum StatusJogo {
     JOGANDO, FINALIZADO, ABANDONADO, PLANEJADO;
 }

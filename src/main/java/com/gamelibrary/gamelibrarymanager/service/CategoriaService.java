@@ -1,7 +1,7 @@
 package com.gamelibrary.gamelibrarymanager.service;
 import com.gamelibrary.gamelibrarymanager.exception.CategoriaDuplicadaException;
 import com.gamelibrary.gamelibrarymanager.exception.CategoriaEmUsoException;
-import com.gamelibrary.gamelibrarymanager.exception.CategoriaNaoEncontrada;
+import com.gamelibrary.gamelibrarymanager.exception.CategoriaNaoEncontradaException;
 import com.gamelibrary.gamelibrarymanager.exception.RequisicaoInvalidaException;
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.repository.CategoriaRepository;
@@ -17,71 +17,71 @@ import java.util.Map;
 
 @Service
 public class CategoriaService{
-    private final CategoriaRepository repositoryCategoria;
+    private final CategoriaRepository categoriaRepository;
     private final JogoRepository jogoRepository;
 
     @Autowired
     public CategoriaService(CategoriaRepository categoriaRepository, JogoRepository jogoRepository) {
-        this.repositoryCategoria = categoriaRepository;
+        this.categoriaRepository = categoriaRepository;
         this.jogoRepository = jogoRepository;
     }
 
     // não deixa criar duas categorias com o mesmo nome ("RPG" e "rpg" contam como iguais)
-    public Categoria createCategoria(Categoria categoria) {
-        repositoryCategoria.findFirstByNomeIgnoreCase(categoria.getNome()).ifPresent(existente -> {
+    public Categoria criar(Categoria categoria) {
+        categoriaRepository.findFirstByNomeIgnoreCase(categoria.getNome()).ifPresent(existente -> {
             throw new CategoriaDuplicadaException(existente.getNome(), existente.getId());
         });
-        return repositoryCategoria.save(categoria);
+        return categoriaRepository.save(categoria);
     }
 
-    public List<Categoria> findAllCategoria() {
-        return repositoryCategoria.findAll();
+    public List<Categoria> listarTodas() {
+        return categoriaRepository.findAll();
     }
 
-    public Categoria findCategoriaById(Long id) {
-        return repositoryCategoria.findById(id). orElseThrow(() -> new CategoriaNaoEncontrada(id));
+    public Categoria buscarPorId(Long id) {
+        return categoriaRepository.findById(id). orElseThrow(() -> new CategoriaNaoEncontradaException(id));
     }
 
-    public List<Categoria> findByName(String nome) {
+    public List<Categoria> buscarPorNome(String nome) {
         String nomeTratado = nome.toLowerCase().strip();
-        return repositoryCategoria.findByNomeContainingIgnoreCase(nomeTratado);
+        return categoriaRepository.findByNomeContainingIgnoreCase(nomeTratado);
     }
 
     // só apaga categoria sem jogos; com jogos, responde 409 dizendo quantos
-    public boolean deleteCategory(Long id) {
-        if(!(repositoryCategoria.existsById(id))){
-            throw new CategoriaNaoEncontrada(id);
+    public boolean apagar(Long id) {
+        if(!(categoriaRepository.existsById(id))){
+            throw new CategoriaNaoEncontradaException(id);
         }
         long jogosNaCategoria = jogoRepository.countByCategorias_Id(id);
         if (jogosNaCategoria > 0) {
             throw new CategoriaEmUsoException("A categoria " + id + " tem " + jogosNaCategoria + " jogo(s). "
                     + "Tire os jogos dela antes (DELETE /jogos/{id}/categorias/" + id + ").");
         }
-        repositoryCategoria.deleteById(id);
+        categoriaRepository.deleteById(id);
         return true;
     }
 
     // mesma regra: se qualquer categoria tiver jogos, não apaga nenhuma
-    public boolean deleteAll() {
+    public boolean apagarTodas() {
         long vinculos = jogoRepository.contarVinculosComCategorias();
         if (vinculos > 0) {
             throw new CategoriaEmUsoException("Existem " + vinculos + " vínculo(s) entre jogos e categorias. "
                     + "Tire os jogos das categorias antes de apagar todas.");
         }
-        repositoryCategoria.deleteAll();
+        categoriaRepository.deleteAll();
         return true;
     }
 
     // usado pela Steam: reaproveita a categoria se já existir (sem diferenciar maiúsculas), senão cria
     public Categoria buscarOuCriarPorNome(String nome) {
-        return repositoryCategoria.findFirstByNomeIgnoreCase(nome.strip())
-                .orElseGet(() -> repositoryCategoria.save(new Categoria(nome.strip())));
+        return categoriaRepository.findFirstByNomeIgnoreCase(nome.strip())
+                .orElseGet(() -> categoriaRepository.save(new Categoria(nome.strip())));
     }
 
     // Cria várias de uma vez. Primeiro valida TODOS os nomes (se um for inválido, nada é salvo).
     // Nomes que já existem (ou repetidos na própria lista) são reaproveitados, não duplicados.
     @Transactional
-    public List<Categoria> creatManyCategories(List<String> nomeAll) {
+    public List<Categoria> criarVarias(List<String> nomeAll) {
         if (nomeAll == null || nomeAll.isEmpty()) {
             throw new RequisicaoInvalidaException("Envie uma lista com pelo menos um nome, ex.: [\"RPG\", \"Ação\"].");
         }

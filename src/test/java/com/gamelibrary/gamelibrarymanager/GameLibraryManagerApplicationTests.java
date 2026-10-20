@@ -9,7 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 // então este teste roda em qualquer máquina, inclusive no GitHub Actions, sem Postgres.
 @SpringBootTest
 @ActiveProfiles("test")
-class GameLiabraryManagerApplicationTests {
+class GameLibraryManagerApplicationTests {
 
     @Test
     void contextLoads() {

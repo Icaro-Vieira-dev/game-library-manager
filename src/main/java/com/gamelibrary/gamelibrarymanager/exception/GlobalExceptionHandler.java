@@ -1,73 +1,132 @@
 package com.gamelibrary.gamelibrarymanager.exception;
 
-import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+// Todos os erros da API saem no mesmo formato, o ProblemDetail (padrão RFC 9457):
+// {
+//   "type": "about:blank",
+//   "title": "Jogo não encontrado",          <- o tipo de problema, curto
+//   "status": 404,                           <- o mesmo código HTTP da resposta
+//   "detail": "Jogo do id: 99 Não encontrado", <- a explicação deste caso
+//   "instance": "/jogos/99"                  <- a rota que deu erro
+// }
+// Erros de validação ganham também o campo "erros": { "campo": "mensagem" }.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(JogoNaoEncontradoException.class)
-    public ResponseEntity<String> handleJogoNaoEncontrado(JogoNaoEncontradoException ex) {
-        return ResponseEntity.status(404).body(ex.getMessage());
+    public ProblemDetail handleJogoNaoEncontrado(JogoNaoEncontradoException ex) {
+        return problema(HttpStatus.NOT_FOUND, "Jogo não encontrado", ex.getMessage());
     }
 
-    @ExceptionHandler(JogoNaoDeletadoException.class)
-    public ResponseEntity<String> handleJogoNaoDeletado(JogoNaoDeletadoException ex) {
-        return ResponseEntity.status(404).body(ex.getMessage());
+    @ExceptionHandler(CategoriaNaoEncontradaException.class)
+    public ProblemDetail handleCategoriaNaoEncontrada(CategoriaNaoEncontradaException ex) {
+        return problema(HttpStatus.NOT_FOUND, "Categoria não encontrada", ex.getMessage());
     }
 
-    @ExceptionHandler(CategoriaNaoEncontrada.class)
-    public ResponseEntity<String> handleCategoriaNaoEncontrada(CategoriaNaoEncontrada ex) {
-        return ResponseEntity.status(404).body(ex.getMessage());
-    }
-
+    // @Valid no body: um item em "erros" para cada campo inválido
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidationErrors(MethodArgumentNotValidException ex) {
-        Map<String, String> erros = new HashMap<>();
-
-        ex.getBindingResult().getFieldErrors().forEach(erro -> {
-            erros.put(erro.getField(), erro.getDefaultMessage());
-        });
-
-        return ResponseEntity.status(400).body(erros);
+    public ProblemDetail handleValidationErrors(MethodArgumentNotValidException ex) {
+        Map<String, String> erros = new LinkedHashMap<>();
+        for (FieldError erro : ex.getBindingResult().getFieldErrors()) {
+            // isBindingFailure = o valor nem pôde ser convertido (ex.: ?status=XPTO, ?anoLancamento=abc)
+            String mensagem = erro.isBindingFailure()
+                    ? "Valor inválido: '" + erro.getRejectedValue() + "'."
+                    : erro.getDefaultMessage();
+            erros.putIfAbsent(erro.getField(), mensagem);
+        }
+        ProblemDetail problema = problema(HttpStatus.BAD_REQUEST, "Dados inválidos",
+                "Um ou mais campos estão inválidos. Veja o campo \"erros\".");
+        problema.setProperty("erros", erros);
+        return problema;
     }
 
-    // ex.: DELETE /jogos/deleteAll cai em /jogos/{id} e "deleteAll" não é um número
+    // ex.: GET /jogos/abc cai em /jogos/{id} e "abc" não é um número
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<String> handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
-        return ResponseEntity.status(400).body("Valor inválido para '" + ex.getName() + "': " + ex.getValue()
-                + ". Verifique se a rota está correta.");
+    public ProblemDetail handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
+        return problema(HttpStatus.BAD_REQUEST, "Parâmetro inválido",
+                "Valor inválido para '" + ex.getName() + "': " + ex.getValue() + ". Verifique se a rota está correta.");
+    }
+
+    // JSON malformado, ou um valor que não cabe no campo (ex.: "statusJogo": "ZERADO")
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleJsonInvalido(HttpMessageNotReadableException ex) {
+        return problema(HttpStatus.BAD_REQUEST, "Corpo da requisição inválido",
+                "O JSON enviado está malformado ou tem um campo com valor inválido "
+                        + "(ex.: statusJogo aceita JOGANDO, FINALIZADO, ABANDONADO ou PLANEJADO).");
+    }
+
+    // ?sort=campoQueNaoExiste
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ProblemDetail handleOrdenacaoInvalida(PropertyReferenceException ex) {
+        return problema(HttpStatus.BAD_REQUEST, "Ordenação inválida",
+                "Não dá para ordenar por '" + ex.getPropertyName() + "'. Use um campo do jogo, ex.: sort=nomeJogo ou sort=horasJogadas,desc.");
     }
 
     @ExceptionHandler(SteamImportacaoException.class)
-    public ResponseEntity<String> handleSteamImportacao(SteamImportacaoException ex) {
-        return ResponseEntity.status(422).body(ex.getMessage());
+    public ProblemDetail handleSteamImportacao(SteamImportacaoException ex) {
+        return problema(HttpStatus.UNPROCESSABLE_CONTENT, "Não foi possível falar com a Steam", ex.getMessage());
+    }
+
+    // a Steam não respondeu dentro do tempo-limite (AppConfig), ou a internet caiu
+    @ExceptionHandler(ResourceAccessException.class)
+    public ProblemDetail handleSemResposta(ResourceAccessException ex) {
+        return problema(HttpStatus.GATEWAY_TIMEOUT, "A Steam não respondeu",
+                "A Steam demorou demais para responder ou está fora do ar. Tente de novo em alguns minutos.");
     }
 
     // 409 Conflict: o pedido é válido, mas conflita com o estado atual (a categoria ainda tem jogos)
     @ExceptionHandler(CategoriaEmUsoException.class)
-    public ResponseEntity<String> handleCategoriaEmUso(CategoriaEmUsoException ex) {
-        return ResponseEntity.status(409).body(ex.getMessage());
+    public ProblemDetail handleCategoriaEmUso(CategoriaEmUsoException ex) {
+        return problema(HttpStatus.CONFLICT, "Categoria em uso", ex.getMessage());
     }
 
     // 409 também: criar uma categoria que já existe conflita com o que está no banco
     @ExceptionHandler(CategoriaDuplicadaException.class)
-    public ResponseEntity<String> handleCategoriaDuplicada(CategoriaDuplicadaException ex) {
-        return ResponseEntity.status(409).body(ex.getMessage());
+    public ProblemDetail handleCategoriaDuplicada(CategoriaDuplicadaException ex) {
+        return problema(HttpStatus.CONFLICT, "Categoria já existe", ex.getMessage());
     }
 
     @ExceptionHandler(RequisicaoInvalidaException.class)
-    public ResponseEntity<String> handleRequisicaoInvalida(RequisicaoInvalidaException ex) {
-        return ResponseEntity.status(400).body(ex.getMessage());
+    public ProblemDetail handleRequisicaoInvalida(RequisicaoInvalidaException ex) {
+        return problema(HttpStatus.BAD_REQUEST, "Requisição inválida", ex.getMessage());
     }
 
+    // Rede de segurança: qualquer outro erro.
+    // - Erros do próprio Spring (rota inexistente = 404, método errado = 405...) já sabem o seu
+    //   ProblemDetail (implementam ErrorResponse): devolvemos o deles, com o código certo.
+    // - O resto é um erro inesperado nosso: 500, com uma mensagem genérica. O detalhe técnico vai
+    //   para o LOG do servidor, e não para a resposta (não se expõe stack trace para o cliente).
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleErroInesperado(Exception ex) {
+        if (ex instanceof ErrorResponse erroDoSpring) {
+            return erroDoSpring.getBody();
+        }
+        log.error("Erro inesperado", ex);
+        return problema(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno",
+                "Ocorreu um erro inesperado. Tente novamente; se continuar, verifique o log do servidor.");
+    }
+
+    private static ProblemDetail problema(HttpStatus status, String titulo, String detalhe) {
+        ProblemDetail problema = ProblemDetail.forStatusAndDetail(status, detalhe);
+        problema.setTitle(titulo);
+        return problema;
+    }
 }

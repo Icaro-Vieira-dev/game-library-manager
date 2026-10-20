@@ -20,7 +20,8 @@ API REST para gerenciar sua biblioteca pessoal de jogos com integração direta 
 - ⭐ Sistema de avaliação (nota de 1 a 10)
 - 🏆 Meta de platina por jogo (opcional), com o progresso de conquistas buscado na Steam
 - ✅ Checklist de conquistas: o que já foi feito e o que falta
-- 🔍 Busca por nome, gênero, plataforma, status e ano de lançamento
+- 🔍 Busca com filtros combináveis (nome, gênero, plataforma, status, ano, categoria), paginação e ordenação
+- ✏️ Edição parcial (`PATCH`): mude só o campo que quiser
 
 ## 🛠️ Tecnologias
 
@@ -91,36 +92,67 @@ O mesmo conteúdo, em formato OpenAPI (JSON), fica em `http://localhost:8080/v3/
 ./mvnw test
 ```
 
-- ⚡ Rodam **sem PostgreSQL e sem `.env`**: o teste da aplicação inteira usa um banco **H2 em memória**.
-- Cobrem a regra de status da importação, a leitura do ano de lançamento e a subida da aplicação (15 testes).
+- ⚡ Rodam **sem PostgreSQL e sem `.env`**: os testes que sobem a aplicação usam um banco **H2 em memória**, e os que falam com a Steam usam um **servidor falso** (`MockRestServiceServer`).
+- 56 testes, de dois tipos:
+  - **unitários:** regra de status, leitura do ano, mescla da importação, leitura do JSON da Steam;
+  - **de integração** (`JogoApiIntegracaoTest`, com MockMvc): chamam os endpoints de verdade (busca, paginação, PATCH, erros, rotas).
 - ✅ Rodam sozinhos no **GitHub Actions** a cada push (o selo **CI** no topo mostra o resultado).
 
 ---
 
 ## 📡 Endpoints
 
+> ❌ **Erros** saem sempre no mesmo formato, o [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc9457) (RFC 9457):
+> ```json
+> { "type": "about:blank", "title": "Jogo não encontrado", "status": 404, "detail": "Jogo do id: 99 Não encontrado", "instance": "/jogos/99" }
+> ```
+> Erros de validação trazem também `"erros": { "campo": "mensagem" }`.
+
 ### 🎮 Jogos — `/jogos`
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/jogos` | Lista todos os jogos |
+| GET | `/jogos` | 🔍 Lista os jogos, com **filtros** e **paginação** (veja abaixo) |
 | POST | `/jogos` | Cadastra um novo jogo |
 | GET | `/jogos/{id}` | Busca jogo por ID |
-| PUT | `/jogos/{id}` | Atualiza jogo por ID |
+| PATCH | `/jogos/{id}` | ✏️ Atualiza **só os campos enviados** (ex.: dar nota) |
+| PUT | `/jogos/{id}` | Atualiza **todos** os campos do jogo |
 | DELETE | `/jogos/{id}` | Remove jogo por ID |
-| DELETE | `/jogos/deleteAllJogos` | ⚠️ Remove **todos** os jogos |
+| DELETE | `/jogos?confirmar=true` | ⚠️ Remove **todos** os jogos (sem o `confirmar=true`, responde 400 e não apaga nada) |
 | PUT | `/jogos/{id}/platina` | 🏆 Define a meta de platina; em jogos da Steam, busca o progresso automaticamente |
 | DELETE | `/jogos/{id}/platina` | Remove a platina e o checklist (o jogo não é apagado) |
 | GET | `/jogos/{id}/conquistas?concluida=` | ✅ Checklist de conquistas (`concluida=false` mostra só as que faltam) |
 | PUT | `/jogos/{id}/categorias/{categoriaId}` | 🗂️ Coloca o jogo numa categoria (um jogo pode ter várias) |
 | DELETE | `/jogos/{id}/categorias/{categoriaId}` | Tira o jogo da categoria (nada é apagado, só o vínculo) |
-| GET | `/jogos/buscar/nome?nome=` | 🔍 Busca por nome (parcial, case-insensitive) |
-| GET | `/jogos/buscar/genero?genero=` | 🔍 Busca por gênero |
-| GET | `/jogos/buscar/plataforma?plataforma=` | 🔍 Busca por plataforma |
-| GET | `/jogos/buscar/status?status=` | 🔍 Busca por status |
-| GET | `/jogos/buscar/anoLancamento?anoLancamento=` | 🔍 Busca por ano de lançamento |
 
-**Body para criar/atualizar jogo:**
+#### 🔍 Busca e paginação: `GET /jogos`
+
+Todos os filtros são **opcionais** e podem ser **combinados**:
+
+| Parâmetro | Como filtra | Exemplo |
+|---|---|---|
+| `nome` | contém o texto, sem diferenciar maiúsculas | `?nome=ring` acha "Elden Ring" |
+| `genero` | gênero exato, sem diferenciar maiúsculas | `?genero=rpg` |
+| `plataforma` | plataforma exata, sem diferenciar maiúsculas | `?plataforma=pc` |
+| `status` | `JOGANDO`, `FINALIZADO`, `ABANDONADO` ou `PLANEJADO` | `?status=JOGANDO` |
+| `anoLancamento` | ano exato | `?anoLancamento=2022` |
+| `categoria` | nome da categoria, sem diferenciar maiúsculas | `?categoria=aventura` |
+| `page` | número da página, começando em 0 | `?page=1` |
+| `size` | itens por página (padrão 20, máximo 100) | `?size=10` |
+| `sort` | ordenação (padrão: `nomeJogo`) | `?sort=horasJogadas,desc` |
+
+```http
+GET http://localhost:8080/jogos?genero=rpg&status=JOGANDO&sort=horasJogadas,desc&size=5
+```
+
+```json
+{
+  "conteudo": [ { "idJogo": 5, "nomeJogo": "Baldur's Gate 3", "...": "..." } ],
+  "pagina": 0, "tamanho": 5, "totalElementos": 7, "totalPaginas": 2, "ultima": false
+}
+```
+
+**Body para criar (`POST`) ou substituir (`PUT`) um jogo:**
 ```json
 {
   "nomeJogo": "Elden Ring",
@@ -135,8 +167,13 @@ O mesmo conteúdo, em formato OpenAPI (JSON), fica em `http://localhost:8080/v3/
 ```
 
 - **Obrigatórios:** `nomeJogo`, `generoJogo`, `plataformaJogo`, `statusJogo`.
-- **Opcionais:** `anoLancamentoJogo` (de 1958 até o ano atual + 5), `notaJogo` (de 1 a 10), `desenvolvedoraJogo`. Sem ano ou sem nota, o campo fica `0`.
+- **Opcionais:** `anoLancamentoJogo` (de 1958 até o ano atual + 5), `notaJogo` (de 1 a 10), `horasJogadas`, `desenvolvedoraJogo`. Sem ano, nota ou horas, o campo fica `0`.
 - `horasJogadas` pode ser `0` (jogo ainda não jogado), mas não pode ser negativo.
+
+**`PATCH` (só o que mudar):** mande apenas os campos que quer alterar, com as mesmas regras, mas sem nenhum obrigatório:
+```json
+{ "notaJogo": 9.5, "statusJogo": "FINALIZADO" }
+```
 
 **Status disponíveis:** 🎮 `JOGANDO` | ✅ `FINALIZADO` | 💤 `ABANDONADO` | 📋 `PLANEJADO`
 
@@ -144,43 +181,48 @@ O mesmo conteúdo, em formato OpenAPI (JSON), fica em `http://localhost:8080/v3/
 
 ### 🗂️ Categorias — `/categorias`
 
-As categorias são os **gêneros** dos jogos (Ação, RPG, Aventura…). Um jogo pode estar em várias. Nos jogos da Steam, elas são criadas e ligadas automaticamente pelo [`POST /importSteam/detalhes`](#detalhes-da-loja). Nos outros jogos, você liga à mão com `PUT /jogos/{id}/categorias/{categoriaId}`.
+As categorias são os **gêneros** dos jogos (Ação, RPG, Aventura…). Um jogo pode estar em várias. Nos jogos da Steam, elas são criadas e ligadas automaticamente pelo [`POST /steam/detalhes`](#detalhes-da-loja). Nos outros jogos, você liga à mão com `PUT /jogos/{id}/categorias/{categoriaId}`.
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/categorias` | Lista todas as categorias, com seus jogos |
+| GET | `/categorias?nome=` | 🔍 Só as categorias cujo nome contém o texto |
 | POST | `/categorias` | Cria uma categoria |
-| POST | `/categorias/manyCategories` | Cria múltiplas categorias |
+| POST | `/categorias/lote` | Cria várias categorias de uma vez (`["RPG", "Ação"]`) |
 | GET | `/categorias/{id}` | Busca categoria por ID |
-| GET | `/categorias/nome?nome=` | 🔍 Busca categoria por nome |
 | DELETE | `/categorias/{id}` | Remove categoria por ID |
-| DELETE | `/categorias/deleteAll` | ⚠️ Remove **todas** as categorias |
+| DELETE | `/categorias?confirmar=true` | ⚠️ Remove **todas** as categorias (sem o `confirmar=true`, responde 400) |
 
 > 🔒 Uma categoria com jogos **não pode ser apagada**: a API responde `409` dizendo quantos jogos ela tem. Tire os jogos antes com `DELETE /jogos/{id}/categorias/{categoriaId}`.
 
-> 🚫 **Sem nomes repetidos:** criar uma categoria que já existe (`"rpg"` = `"RPG"`) responde `409` com o id da que já existe. O `manyCategories` reaproveita as existentes em vez de duplicar, e se algum nome da lista estiver vazio, **nada** é criado (`400`).
+> 🚫 **Sem nomes repetidos:** criar uma categoria que já existe (`"rpg"` = `"RPG"`) responde `409` com o id da que já existe. O `POST /categorias/lote` reaproveita as existentes em vez de duplicar, e se algum nome da lista estiver vazio, **nada** é criado (`400`).
 
 ---
 
-### 🔄 Integração Steam — `/importSteam`
+### 🔄 Integração Steam — `/steam`
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| POST | `/importSteam/importar` | 📥 Importa a biblioteca da Steam do `STEAM_ID` configurado no `.env` |
-| POST | `/importSteam/importar?steamId=` | 📥 Importa a biblioteca de outro perfil |
-| POST | `/importSteam/detalhes?limite=` | 🏷️ Completa gênero, categorias, desenvolvedora e ano pela loja da Steam |
+| POST | `/steam/importacao` | 📥 Importa a biblioteca da Steam do `STEAM_ID` configurado no `.env` |
+| POST | `/steam/importacao?steamId=` | 📥 Importa a biblioteca de outro perfil |
+| POST | `/steam/detalhes?limite=` | 🏷️ Completa gênero, categorias, desenvolvedora, ano e banner pela loja da Steam |
 
-**Como usar:** configure o `.env` (veja [Configuração da Steam](#configuracao-da-steam)) e faça a requisição:
+**Como usar:** configure o `.env` (veja [Configuração](#configuracao-da-steam)) e faça a requisição:
 
 ```http
-POST http://localhost:8080/importSteam/importar
+POST http://localhost:8080/steam/importacao
+```
+
+```json
+{ "jogosNovos": 3, "horasAtualizadas": 12, "novos": [ { "idJogo": 140, "nomeJogo": "Hades", "...": "..." } ] }
 ```
 
 **O que a importação faz:**
 
 - ⏱️ Converte o tempo de jogo de minutos para horas.
-- 🚫 **Não duplica:** cada jogo guarda o seu `steamAppId`, e os jogos que já foram importados são ignorados. A resposta traz só os jogos novos (`[]` se não houver nada novo).
-- 🤖 **Define o status inicial** de cada jogo:
+- 🚫 **Não duplica:** cada jogo guarda o seu `steamAppId`.
+- 🔁 **Sincroniza as horas:** nos jogos que **já existem**, atualiza só as horas jogadas. Status, nota e o resto ficam como você deixou. Dá para chamar sempre que quiser.
+- 🤖 **Define o status inicial** de cada jogo novo:
 
 | Situação na Steam | Status |
 |---|---|
@@ -189,9 +231,9 @@ POST http://localhost:8080/importSteam/importar
 | Não joga há 2 semanas e tem 10h ou mais | ✅ `FINALIZADO` |
 | Não joga há 2 semanas e tem menos de 10h | 💤 `ABANDONADO` |
 
-> 💡 O status é uma estimativa baseada nas horas jogadas. Jogos online, ou zerados em poucas horas, podem precisar de ajuste manual com `PUT /jogos/{id}`.
+> 💡 O status é uma estimativa baseada nas horas jogadas. Jogos online, ou zerados em poucas horas, podem precisar de ajuste manual com `PATCH /jogos/{id}`.
 
-**❌ Erros (422, com mensagem explicando o que fazer):** chave não configurada ou recusada pela Steam, Steam ID fora do formato de 17 dígitos, ou perfil com os detalhes de jogo privados.
+**❌ Erros:** `422` para chave não configurada ou recusada pela Steam, Steam ID fora do formato de 17 dígitos, ou perfil com os detalhes de jogo privados; `504` se a Steam não responder a tempo (limite de 20 s).
 
 ✏️ Depois de importar, você pode editar cada jogo para adicionar nota, gênero etc.
 
@@ -201,7 +243,7 @@ POST http://localhost:8080/importSteam/importar
 A importação traz só nome e horas. Para completar o resto, rode depois:
 
 ```http
-POST http://localhost:8080/importSteam/detalhes
+POST http://localhost:8080/steam/detalhes
 ```
 
 ```json
@@ -244,7 +286,7 @@ Os jogos da Steam trazem duas imagens, guardadas como **URL**: as imagens ficam 
 
 | Campo | Formato | Quando existe |
 |---|---|---|
-| `imagemBanner` | horizontal, 460×215 | sempre, depois do `POST /importSteam/detalhes` |
+| `imagemBanner` | horizontal, 460×215 | sempre, depois do `POST /steam/detalhes` |
 | `imagemCapa` | vertical, 600×900 (como a capa da biblioteca da Steam) | na maioria dos jogos, mas **não em todos** |
 
 > 💡 **No front-end:** use a `imagemCapa` e, se ela não carregar (404), troque pela `imagemBanner`. Exemplo em HTML:
@@ -305,15 +347,16 @@ GET http://localhost:8080/jogos/{id}/conquistas?concluida=false
 ```
 src/main/java/com/gamelibrary/gamelibrarymanager/
 ├── controller/
-│   ├── GameController.java
-│   ├── CategoryController.java
+│   ├── JogoController.java
+│   ├── CategoriaController.java
 │   └── SteamController.java
 ├── service/
-│   ├── GameService.java
+│   ├── JogoService.java
 │   ├── CategoriaService.java
 │   └── SteamService.java
 ├── repository/
 │   ├── JogoRepository.java
+│   ├── JogoEspecificacoes.java      (filtros da busca GET /jogos)
 │   ├── CategoriaRepository.java
 │   └── ConquistaRepository.java
 ├── model/
@@ -321,39 +364,49 @@ src/main/java/com/gamelibrary/gamelibrarymanager/
 │   ├── Categoria.java
 │   ├── Platina.java
 │   ├── Conquista.java
-│   └── GameStatus.java (enum)
-├── dto/
+│   └── StatusJogo.java (enum)
+├── dto/                             (records)
 │   ├── JogoRequestDTO.java
+│   ├── JogoPatchDTO.java
 │   ├── JogoResponseDTO.java
-│   ├── CategoryRequestDTO.java
-│   ├── CategoryResponseDTO.java
+│   ├── FiltroJogosDTO.java
+│   ├── PaginaResponseDTO.java
+│   ├── CategoriaRequestDTO.java
+│   ├── CategoriaResponseDTO.java
 │   ├── PlatinaRequestDTO.java
 │   ├── ConquistaResponseDTO.java
 │   └── steam/
-│       ├── SteamGameDTO.java
-│       ├── SteamResponseDTO.java
-│       ├── SteamConquistaDTO.java
+│       ├── SteamBibliotecaResponseDTO.java
+│       ├── SteamJogoDTO.java
 │       ├── SteamConquistasResponseDTO.java
+│       ├── SteamConquistaDTO.java
 │       ├── SteamLojaAppDTO.java
+│       ├── ImportacaoSteamResultadoDTO.java
 │       └── DetalhesSteamResultadoDTO.java
 ├── exception/
-│   ├── GlobalExceptionHandler.java
+│   ├── GlobalExceptionHandler.java  (todos os erros em ProblemDetail)
 │   ├── JogoNaoEncontradoException.java
-│   ├── JogoNaoDeletadoException.java
-│   ├── CategoriaNaoEncontrada.java
+│   ├── CategoriaNaoEncontradaException.java
 │   ├── CategoriaEmUsoException.java
 │   ├── CategoriaDuplicadaException.java
 │   ├── RequisicaoInvalidaException.java
 │   └── SteamImportacaoException.java
-├── AppConfig.java
-└── OpenApiConfig.java          (textos do Swagger)
+├── AppConfig.java                   (RestClient da Steam, com tempo-limite)
+├── OpenApiConfig.java               (textos do Swagger)
+└── GameLibraryManagerApplication.java
 
 src/test/
 ├── java/com/gamelibrary/gamelibrarymanager/
-│   ├── GameLiabraryManagerApplicationTests.java   (sobe a aplicação com H2)
+│   ├── GameLibraryManagerApplicationTests.java   (sobe a aplicação com H2)
+│   ├── controller/
+│   │   └── JogoApiIntegracaoTest.java            (endpoints com MockMvc + H2)
+│   ├── dto/steam/
+│   │   └── SteamDtoJsonTest.java                 (leitura do JSON da Steam)
 │   └── service/
 │       ├── SteamServiceStatusTest.java
-│       └── SteamServiceAnoTest.java
+│       ├── SteamServiceAnoTest.java
+│       ├── SteamServiceMesclaTest.java
+│       └── SteamServiceHttpTest.java             (Steam falsa com MockRestServiceServer)
 └── resources/
     └── application-test.properties               (H2 em memória)
 ```

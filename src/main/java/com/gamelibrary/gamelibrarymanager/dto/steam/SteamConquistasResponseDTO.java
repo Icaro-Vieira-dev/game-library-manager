@@ -1,48 +1,22 @@
 package com.gamelibrary.gamelibrarymanager.dto.steam;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 
 // Formato da resposta do GetPlayerAchievements:
 // { "playerstats": { "success": true, "achievements": [ ... ] } }
 // ou, em caso de erro: { "playerstats": { "success": false, "error": "Requested app has no stats" } }
-public class SteamConquistasResponseDTO {
-    private PlayerStats playerstats;
+public record SteamConquistasResponseDTO(PlayerStats playerstats) {
 
-    //Getter
-    public PlayerStats getPlayerstats() {
-        return playerstats;
-    }
-
-    //Setter
-    public void setPlayerstats(PlayerStats playerstats) {
-        this.playerstats = playerstats;
-    }
-
-    public static class PlayerStats {
-        private boolean success;
-        private String error;
-        private List<SteamConquistaDTO> achievements;
-
-        //Getter
-        public boolean isSuccess() {
-            return success;
-        }
-        public String getError() {
-            return error;
-        }
-        public List<SteamConquistaDTO> getAchievements() {
-            return achievements;
-        }
-
-        //Setter
-        public void setSuccess(boolean success) {
-            this.success = success;
-        }
-        public void setError(String error) {
-            this.error = error;
-        }
-        public void setAchievements(List<SteamConquistaDTO> achievements) {
-            this.achievements = achievements;
+    public record PlayerStats(
+            Boolean success,
+            String error,
+            @JsonProperty("achievements") List<SteamConquistaDTO> conquistas
+    ) {
+        // Boolean + construtor compacto: se "success" faltar, vira false (mesmo motivo do SteamJogoDTO)
+        public PlayerStats {
+            success = Boolean.TRUE.equals(success);
         }
     }
 }

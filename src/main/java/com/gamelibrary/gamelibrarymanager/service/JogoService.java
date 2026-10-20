@@ -1,15 +1,18 @@
 package com.gamelibrary.gamelibrarymanager.service;
+import com.gamelibrary.gamelibrarymanager.dto.FiltroJogosDTO;
+import com.gamelibrary.gamelibrarymanager.dto.JogoPatchDTO;
 import com.gamelibrary.gamelibrarymanager.dto.steam.SteamConquistaDTO;
-import com.gamelibrary.gamelibrarymanager.exception.JogoNaoDeletadoException;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.model.Conquista;
-import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 import com.gamelibrary.gamelibrarymanager.repository.ConquistaRepository;
+import com.gamelibrary.gamelibrarymanager.repository.JogoEspecificacoes;
 import com.gamelibrary.gamelibrarymanager.repository.JogoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class GameService{
+public class JogoService{
     private final JogoRepository jogoRepository;
     private final ConquistaRepository conquistaRepository;
     private final SteamService steamService;
@@ -28,7 +31,7 @@ public class GameService{
 
 
     @Autowired
-    public GameService(JogoRepository jogoRepository, ConquistaRepository conquistaRepository,
+    public JogoService(JogoRepository jogoRepository, ConquistaRepository conquistaRepository,
                        SteamService steamService, CategoriaService categoriaService) {
         this.jogoRepository = jogoRepository;
         this.conquistaRepository = conquistaRepository;
@@ -36,11 +39,12 @@ public class GameService{
         this.categoriaService = categoriaService;
     }
 
-    public List<Jogo> listarTodos(){
-        return jogoRepository.findAll();
+    // busca com filtros opcionais + paginação (substitui o listarTodos e os 5 buscar*)
+    public Page<Jogo> buscar(FiltroJogosDTO filtro, Pageable paginacao){
+        return jogoRepository.findAll(JogoEspecificacoes.comFiltros(filtro), paginacao);
     }
 
-    public Jogo criarJogo(Jogo jogo) {
+    public Jogo criar(Jogo jogo) {
         return jogoRepository.save(jogo);
     }
 
@@ -50,7 +54,7 @@ public class GameService{
 
     }
 
-    public Jogo atualizarJogo(Long id,Jogo jogoAtualizado){
+    public Jogo atualizar(Long id, Jogo jogoAtualizado){
         Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
 
         jogo.setNomeJogo(jogoAtualizado.getNomeJogo());
@@ -65,17 +69,33 @@ public class GameService{
         return jogoRepository.save(jogo);
     }
 
+    // PATCH: só troca os campos que vieram preenchidos; os que vieram null ficam como estão
+    public Jogo atualizarParcialmente(Long id, JogoPatchDTO mudancas){
+        Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
 
-    public boolean deleteJogo(Long id){
+        if (mudancas.nomeJogo() != null) jogo.setNomeJogo(mudancas.nomeJogo().strip());
+        if (mudancas.generoJogo() != null) jogo.setGeneroJogo(mudancas.generoJogo().strip());
+        if (mudancas.plataformaJogo() != null) jogo.setPlataformaJogo(mudancas.plataformaJogo().strip());
+        if (mudancas.anoLancamentoJogo() != null) jogo.setAnoLancamentoJogo(mudancas.anoLancamentoJogo());
+        if (mudancas.horasJogadas() != null) jogo.setHorasJogadas(mudancas.horasJogadas());
+        if (mudancas.statusJogo() != null) jogo.setStatusJogo(mudancas.statusJogo());
+        if (mudancas.notaJogo() != null) jogo.setNotaJogo(mudancas.notaJogo());
+        if (mudancas.desenvolvedoraJogo() != null) jogo.setDesenvolvedoraJogo(mudancas.desenvolvedoraJogo().strip());
+
+        return jogoRepository.save(jogo);
+    }
+
+
+    public boolean apagar(Long id){
         if(!(jogoRepository.existsById(id))){
-           throw new JogoNaoDeletadoException(id);
+           throw new JogoNaoEncontradoException(id);
         }
         jogoRepository.deleteById(id);
         return true;
     }
 
     @Transactional
-    public boolean deleteAll(){
+    public boolean apagarTodos(){
         // o deleteAllInBatch roda SQL direto e não passa pelo JPA, então os vínculos com categorias
         // (tabela jogo_categorias) precisam sair antes; as conquistas o banco apaga sozinho (ON DELETE CASCADE)
         jogoRepository.apagarTodosVinculosComCategorias();
@@ -120,15 +140,15 @@ public class GameService{
         List<Conquista> paraSalvar = new ArrayList<>();
         int obtidas = 0;
         for (SteamConquistaDTO dto : daSteam) {
-            Conquista conquista = existentes.get(dto.getApiname());
+            Conquista conquista = existentes.get(dto.apiName());
             if (conquista == null) {
-                conquista = new Conquista(jogo, dto.getApiname());
+                conquista = new Conquista(jogo, dto.apiName());
             }
-            boolean concluida = dto.getAchieved() == 1;
-            conquista.setNome(dto.getName());
-            conquista.setDescricao(dto.getDescription());
+            boolean concluida = dto.desbloqueada() == 1;
+            conquista.setNome(dto.nome());
+            conquista.setDescricao(dto.descricao());
             conquista.setConcluida(concluida);
-            conquista.setDataDesbloqueio(dto.getUnlocktime() > 0 ? Instant.ofEpochSecond(dto.getUnlocktime()) : null);
+            conquista.setDataDesbloqueio(dto.momentoDesbloqueio() > 0 ? Instant.ofEpochSecond(dto.momentoDesbloqueio()) : null);
             paraSalvar.add(conquista);
             if (concluida) {
                 obtidas++;
@@ -152,7 +172,7 @@ public class GameService{
     @Transactional
     public Jogo vincularCategoria(Long id, Long categoriaId){
         Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
-        Categoria categoria = categoriaService.findCategoriaById(categoriaId);
+        Categoria categoria = categoriaService.buscarPorId(categoriaId);
         jogo.adicionarCategoria(categoria);
         return jogoRepository.save(jogo);
     }
@@ -161,7 +181,7 @@ public class GameService{
     @Transactional
     public Jogo desvincularCategoria(Long id, Long categoriaId){
         Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
-        Categoria categoria = categoriaService.findCategoriaById(categoriaId);
+        Categoria categoria = categoriaService.buscarPorId(categoriaId);
         jogo.removerCategoria(categoria);
         return jogoRepository.save(jogo);
     }
@@ -175,25 +195,6 @@ public class GameService{
             return conquistaRepository.findByJogo_IdJogoOrderByIdAsc(id);
         }
         return conquistaRepository.findByJogo_IdJogoAndConcluidaOrderByIdAsc(id, concluida);
-    }
-
-    public List<Jogo>buscarGenero(String genero){
-        return jogoRepository.findByGeneroJogo(genero);
-    }
-
-    public List<Jogo>buscarJogoPorPlataforma(String plataforma){
-        return jogoRepository.findByPlataformaJogo(plataforma);
-    }
-
-    public List<Jogo>buscarJogoPorNome(String nome){
-        return jogoRepository.findByNomeJogoContainingIgnoreCase(nome);
-
-    }
-    public List<Jogo>buscarJogoPorAnoLancamento(int anoLancamento){
-        return jogoRepository.findByAnoLancamentoJogo(anoLancamento);
-    }
-    public List<Jogo>buscarJogoPorStatus(GameStatus status){
-        return jogoRepository.findByStatusJogo(status);
     }
 
 }

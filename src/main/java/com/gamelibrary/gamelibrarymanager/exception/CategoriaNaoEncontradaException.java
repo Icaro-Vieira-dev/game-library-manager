@@ -1,7 +1,7 @@
 package com.gamelibrary.gamelibrarymanager.exception;
 
-public class CategoriaNaoEncontrada extends RuntimeException {
-    public CategoriaNaoEncontrada(long id) {
+public class CategoriaNaoEncontradaException extends RuntimeException {
+    public CategoriaNaoEncontradaException(long id) {
         super("Categoria ID: " + id + " Não encontrada verifique e faça o reenvio.");
     }
 }

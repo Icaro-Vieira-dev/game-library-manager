@@ -16,16 +16,16 @@ public class Jogo {
     private int anoLancamentoJogo;
     private double horasJogadas;
     @Enumerated(EnumType.STRING)
-    private GameStatus statusJogo;
+    private StatusJogo statusJogo;
     private double notaJogo;
     private String desenvolvedoraJogo;
     // null para jogos cadastrados manualmente; único para não importar o mesmo jogo da Steam duas vezes
     @Column(unique = true)
     private Long steamAppId;
     // controle interno: true depois que gênero/desenvolvedora/ano foram buscados na loja da Steam
-    // (null = ainda não buscou). Evita buscar de novo o mesmo jogo a cada POST /importSteam/detalhes.
+    // (null = ainda não buscou). Evita buscar de novo o mesmo jogo a cada POST /steam/detalhes.
     private Boolean detalhesLojaBuscados;
-    // URL do banner horizontal (460x215) da loja da Steam; preenchido pelo POST /importSteam/detalhes.
+    // URL do banner horizontal (460x215) da loja da Steam; preenchido pelo POST /steam/detalhes.
     // Guarda só o endereço: a imagem continua hospedada na Steam.
     @Column(length = 500)
     private String imagemBanner;
@@ -44,7 +44,7 @@ public class Jogo {
 
     public Jogo (){}
 
-    public Jogo(String nomeJogo, GameStatus status, String generoJogo, String plataformaJogo, String desenvolvedoraJogo, int anoLancamentoJogo, double horasJogadas, double notaJogo) {
+    public Jogo(String nomeJogo, StatusJogo status, String generoJogo, String plataformaJogo, String desenvolvedoraJogo, int anoLancamentoJogo, double horasJogadas, double notaJogo) {
         this.nomeJogo = nomeJogo;
         this.generoJogo = generoJogo;
         this.plataformaJogo = plataformaJogo;
@@ -76,7 +76,7 @@ public class Jogo {
         return anoLancamentoJogo;
     }
 
-    public GameStatus getStatusJogo() {
+    public StatusJogo getStatusJogo() {
         return statusJogo;
     }
 
@@ -156,7 +156,7 @@ public class Jogo {
         this.horasJogadas = horasJogadas;
     }
 
-    public void setStatusJogo(GameStatus statusJogo) {
+    public void setStatusJogo(StatusJogo statusJogo) {
         this.statusJogo = statusJogo;
     }
 

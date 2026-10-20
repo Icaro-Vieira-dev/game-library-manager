@@ -11,8 +11,8 @@
     <groupId>com.gamelibrary</groupId>
     <artifactId>game-library-manager</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>game-liabrary-manager</name>
-    <description>game-liabrary-manager</description>
+    <name>game-library-manager</name>
+    <description>API REST para gerenciar uma biblioteca de jogos integrada à Steam</description>
     <url/>
     <licenses>
         <license/>

@@ -1,54 +1,71 @@
 package com.gamelibrary.gamelibrarymanager.controller;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.gamelibrary.gamelibrarymanager.dto.FiltroJogosDTO;
+import com.gamelibrary.gamelibrarymanager.dto.JogoPatchDTO;
 import com.gamelibrary.gamelibrarymanager.dto.JogoRequestDTO;
 import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
-import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
-import com.gamelibrary.gamelibrarymanager.model.GameStatus;
+import com.gamelibrary.gamelibrarymanager.dto.PaginaResponseDTO;
+import com.gamelibrary.gamelibrarymanager.exception.RequisicaoInvalidaException;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.dto.ConquistaResponseDTO;
 import com.gamelibrary.gamelibrarymanager.dto.PlatinaRequestDTO;
 import com.gamelibrary.gamelibrarymanager.model.Conquista;
-import com.gamelibrary.gamelibrarymanager.service.GameService;
+import com.gamelibrary.gamelibrarymanager.service.JogoService;
 import jakarta.validation.Valid;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.ListIterator;
 
 
 @Tag(name = "Jogos", description = "Cadastro, busca, platina, conquistas e categorias dos jogos")
 @RestController
 @RequestMapping("/jogos")
-public class GameController {
-    private final GameService gameService;
+public class JogoController {
+    private final JogoService jogoService;
 
     @Autowired
-    public GameController(GameService gameService) {
-        this.gameService = gameService;
+    public JogoController(JogoService jogoService) {
+        this.jogoService = jogoService;
     }
 
     /**
      * GET /jogos
-     * Lista todos os jogos cadastrados.
+     * Lista os jogos, com filtros opcionais (podem ser combinados) e paginação.
      *
-     * Exemplo: GET http://localhost:8080/jogos
-     * Resposta: 200 com a lista ([] se não houver jogos).
+     * Filtros (todos opcionais):
+     *   nome          -> parte do nome, sem diferenciar maiúsculas ("ring" acha "Elden Ring")
+     *   genero        -> gênero exato, sem diferenciar maiúsculas ("rpg" acha "RPG")
+     *   plataforma    -> plataforma exata, sem diferenciar maiúsculas
+     *   status        -> JOGANDO, FINALIZADO, ABANDONADO ou PLANEJADO
+     *   anoLancamento -> ano exato
+     *   categoria     -> nome da categoria, sem diferenciar maiúsculas
+     * Paginação:
+     *   page -> número da página, começando em 0 (padrão 0)
+     *   size -> itens por página (padrão 20, máximo 100)
+     *   sort -> ordenação, ex.: sort=horasJogadas,desc (padrão: nomeJogo em ordem alfabética)
+     *
+     * Exemplos:
+     *   GET http://localhost:8080/jogos                                   -> primeira página, 20 jogos
+     *   GET http://localhost:8080/jogos?genero=rpg&status=JOGANDO         -> RPGs que você está jogando
+     *   GET http://localhost:8080/jogos?nome=resident&page=0&size=5
+     *   GET http://localhost:8080/jogos?sort=horasJogadas,desc&size=10     -> os 10 mais jogados
+     * Resposta: 200 com { conteudo, pagina, tamanho, totalElementos, totalPaginas, ultima }.
+     *           400 se status ou anoLancamento tiver um valor inválido.
      */
     @GetMapping
-    public List<JogoResponseDTO> listarJogos() {
-        List<Jogo> jogos = gameService.listarTodos();
-        List<JogoResponseDTO> listaJogos = new ArrayList<>();
-
-        for (Jogo jogo : jogos) {
-            JogoResponseDTO responseDTO = JogoResponseDTO.fromJogo(jogo);
-            listaJogos.add(responseDTO);
-
-        }
-        return listaJogos;
+    public PaginaResponseDTO<JogoResponseDTO> listarJogos(
+            @ParameterObject FiltroJogosDTO filtro,
+            @ParameterObject @PageableDefault(size = 20, sort = "nomeJogo") Pageable paginacao) {
+        Page<Jogo> pagina = jogoService.buscar(filtro, paginacao);
+        return PaginaResponseDTO.de(pagina, JogoResponseDTO::deJogo);
     }
 
     /**
@@ -75,10 +92,10 @@ public class GameController {
      * Resposta: 200 com o jogo criado (já com idJogo). 400 com a lista de campos inválidos.
      */
     @PostMapping
-    public JogoResponseDTO criarJogos(@Valid @RequestBody JogoRequestDTO dto) {
+    public JogoResponseDTO criar(@Valid @RequestBody JogoRequestDTO dto) {
         Jogo jogo = dto.toJogo();
-        Jogo jogosalvo = gameService.criarJogo(jogo);
-        return JogoResponseDTO.fromJogo(jogosalvo);
+        Jogo jogosalvo = jogoService.criar(jogo);
+        return JogoResponseDTO.deJogo(jogosalvo);
     }
 
     /**
@@ -89,24 +106,42 @@ public class GameController {
      * Resposta: 200 com o jogo. 404 se não existir. 400 se o id não for um número.
      */
     @GetMapping("/{id}")
-    public JogoResponseDTO buscaID(@Valid @PathVariable Long id) {
-       Jogo jogo = gameService.buscarPorId(id);
-       return JogoResponseDTO.fromJogo(jogo);
+    public JogoResponseDTO buscarPorId(@PathVariable Long id) {
+       Jogo jogo = jogoService.buscarPorId(id);
+       return JogoResponseDTO.deJogo(jogo);
+    }
+
+    /**
+     * PATCH /jogos/{id}
+     * Atualiza SÓ os campos enviados; o resto do jogo fica como está.
+     * Use este para mudanças pontuais (dar nota, trocar o status...). O PUT substitui tudo.
+     *
+     * Exemplos: PATCH http://localhost:8080/jogos/5
+     *   Dar nota:              { "notaJogo": 9.5 }
+     *   Marcar como zerado:    { "statusJogo": "FINALIZADO" }
+     *   Várias coisas juntas:  { "generoJogo": "Metroidvania", "plataformaJogo": "Switch" }
+     * Regras: as mesmas do POST, mas nenhum campo é obrigatório. Texto enviado não pode ser vazio.
+     * Resposta: 200 com o jogo atualizado. 404 se não existir. 400 se algum campo enviado for inválido.
+     */
+    @PatchMapping("/{id}")
+    public JogoResponseDTO atualizarParcialmente(@PathVariable Long id, @Valid @RequestBody JogoPatchDTO mudancas) {
+        return JogoResponseDTO.deJogo(jogoService.atualizarParcialmente(id, mudancas));
     }
 
     /**
      * PUT /jogos/{id}
      * Atualiza um jogo. Usa o mesmo body e as mesmas regras do POST /jogos.
      * Atenção: substitui TODOS os campos. Um campo que não for enviado fica vazio (ou 0) no banco.
+     * Para mudar só um ou outro campo, use o PATCH /jogos/{id}.
      *
      * Exemplo: PUT http://localhost:8080/jogos/5   (body igual ao do POST)
      * Resposta: 200 com o jogo atualizado. 404 se não existir. 400 se algum campo for inválido.
      */
     @PutMapping("/{id}")
-    public JogoResponseDTO atualizarJogo(@PathVariable Long id,@Valid @RequestBody JogoRequestDTO jogo) {
+    public JogoResponseDTO atualizar(@PathVariable Long id, @Valid @RequestBody JogoRequestDTO jogo) {
         Jogo request = jogo.toJogo();
-        Jogo jogoatualizado = gameService.atualizarJogo(id, request);
-        return JogoResponseDTO.fromJogo(jogoatualizado);
+        Jogo jogoatualizado = jogoService.atualizar(id, request);
+        return JogoResponseDTO.deJogo(jogoatualizado);
     }
 
     /**
@@ -117,22 +152,26 @@ public class GameController {
      * Resposta: 204 (sem corpo) se apagou. 404 se não existir.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> excluirJogo(@PathVariable Long id) {
-        gameService.deleteJogo(id);
+    public ResponseEntity<Void> apagar(@PathVariable Long id) {
+        jogoService.apagar(id);
         return ResponseEntity.noContent().build();
     }
 
     /**
-     * DELETE /jogos/deleteAllJogos
+     * DELETE /jogos?confirmar=true
      * Apaga TODOS os jogos, inclusive os cadastrados à mão. Não tem como desfazer.
+     * O ?confirmar=true é obrigatório: é uma trava contra um DELETE /jogos mandado por engano
+     * (por exemplo, esquecendo o id no fim da URL).
      *
-     * Exemplo: DELETE http://localhost:8080/jogos/deleteAllJogos
-     * Cuidado com o caminho: "/jogos/deleteAll" ou uma barra no final caem em outra rota e dão 400/404.
-     * Resposta: 204 (sem corpo).
+     * Exemplo: DELETE http://localhost:8080/jogos?confirmar=true
+     * Resposta: 204 (sem corpo). 400 se faltar o ?confirmar=true (nesse caso nada é apagado).
      */
-    @DeleteMapping("/deleteAllJogos")
-    public ResponseEntity<Void> deleteAllJogos() {
-        gameService.deleteAll();
+    @DeleteMapping
+    public ResponseEntity<Void> apagarTodos(@RequestParam(defaultValue = "false") boolean confirmar) {
+        if (!confirmar) {
+            throw new RequisicaoInvalidaException("Para apagar TODOS os jogos, confirme com DELETE /jogos?confirmar=true. Não tem como desfazer.");
+        }
+        jogoService.apagarTodos();
         return ResponseEntity.noContent().build();
     }
 
@@ -156,8 +195,8 @@ public class GameController {
      */
     @PutMapping("/{id}/platina")
     public ResponseEntity<JogoResponseDTO> definirPlatina(@PathVariable Long id, @Valid @RequestBody PlatinaRequestDTO dto) {
-        Jogo jogo = gameService.definirPlatina(id, dto.toPlatina());
-        return ResponseEntity.ok(JogoResponseDTO.fromJogo(jogo));
+        Jogo jogo = jogoService.definirPlatina(id, dto.toPlatina());
+        return ResponseEntity.ok(JogoResponseDTO.deJogo(jogo));
 
     }
 
@@ -171,8 +210,8 @@ public class GameController {
      */
     @DeleteMapping("/{id}/platina")
     public ResponseEntity<JogoResponseDTO> removerPlatina(@PathVariable Long id) {
-        Jogo jogo = gameService.removerPlatina(id);
-        return ResponseEntity.ok(JogoResponseDTO.fromJogo(jogo));
+        Jogo jogo = jogoService.removerPlatina(id);
+        return ResponseEntity.ok(JogoResponseDTO.deJogo(jogo));
     }
 
     /**
@@ -186,7 +225,7 @@ public class GameController {
      */
     @PutMapping("/{id}/categorias/{categoriaId}")
     public JogoResponseDTO vincularCategoria(@PathVariable Long id, @PathVariable Long categoriaId) {
-        return JogoResponseDTO.fromJogo(gameService.vincularCategoria(id, categoriaId));
+        return JogoResponseDTO.deJogo(jogoService.vincularCategoria(id, categoriaId));
     }
 
     /**
@@ -198,7 +237,7 @@ public class GameController {
      */
     @DeleteMapping("/{id}/categorias/{categoriaId}")
     public JogoResponseDTO desvincularCategoria(@PathVariable Long id, @PathVariable Long categoriaId) {
-        return JogoResponseDTO.fromJogo(gameService.desvincularCategoria(id, categoriaId));
+        return JogoResponseDTO.deJogo(jogoService.desvincularCategoria(id, categoriaId));
     }
 
     /**
@@ -214,95 +253,9 @@ public class GameController {
     @GetMapping("/{id}/conquistas")
     public List<ConquistaResponseDTO> listarConquistas(@PathVariable Long id, @RequestParam(required = false) Boolean concluida) {
         List<ConquistaResponseDTO> lista = new ArrayList<>();
-        for (Conquista conquista : gameService.listarConquistas(id, concluida)) {
-            lista.add(ConquistaResponseDTO.fromConquista(conquista));
+        for (Conquista conquista : jogoService.listarConquistas(id, concluida)) {
+            lista.add(ConquistaResponseDTO.deConquista(conquista));
         }
         return lista;
-    }
-
-    /**
-     * GET /jogos/buscar/genero?genero=...
-     * Lista os jogos de um gênero. A busca é EXATA e diferencia maiúsculas: "RPG" não encontra "rpg".
-     *
-     * Exemplo: GET http://localhost:8080/jogos/buscar/genero?genero=RPG
-     * Resposta: 200 com a lista ([] se não achar nada).
-     */
-    @GetMapping("buscar/genero")
-    public List<JogoResponseDTO>buscarPorGenero(@Valid @RequestParam String genero) {
-        List<Jogo> generos = gameService.buscarGenero(genero);
-        List<JogoResponseDTO> listaGeneros = new ArrayList<>();
-
-        for (Jogo jogo : generos) {
-            listaGeneros.add(JogoResponseDTO.fromJogo(jogo));
-        }
-        return listaGeneros;
-    }
-
-    /**
-     * GET /jogos/buscar/plataforma?plataforma=...
-     * Lista os jogos de uma plataforma. A busca é EXATA e diferencia maiúsculas: "PC" não encontra "pc".
-     *
-     * Exemplo: GET http://localhost:8080/jogos/buscar/plataforma?plataforma=PC
-     * Resposta: 200 com a lista ([] se não achar nada).
-     */
-    @GetMapping("buscar/plataforma")
-    public List<JogoResponseDTO>buscarPorPLataforma(@RequestParam String plataforma) {
-        List<Jogo> plataformas = gameService.buscarJogoPorPlataforma(plataforma);
-        List<JogoResponseDTO> listaPlataformas = new ArrayList<>();
-        for (Jogo jogo : plataformas) {
-            listaPlataformas.add(JogoResponseDTO.fromJogo(jogo));
-        }
-        return listaPlataformas;
-    }
-
-    /**
-     * GET /jogos/buscar/nome?nome=...
-     * Lista os jogos cujo nome CONTÉM o texto, sem diferenciar maiúsculas: "ring" encontra "Elden Ring".
-     *
-     * Exemplo: GET http://localhost:8080/jogos/buscar/nome?nome=ring
-     * Resposta: 200 com a lista ([] se não achar nada).
-     */
-    @GetMapping("buscar/nome")
-    public List<JogoResponseDTO> buscarPorNome(@RequestParam String nome) {
-        List<Jogo> nomes = gameService.buscarJogoPorNome(nome);
-        List<JogoResponseDTO> listaNomes = new ArrayList<>();
-        for (Jogo jogo : nomes) {
-            listaNomes.add(JogoResponseDTO.fromJogo(jogo));
-        }
-        return listaNomes;
-    }
-    /**
-     * GET /jogos/buscar/anoLancamento?anoLancamento=...
-     * Lista os jogos lançados em um ano.
-     *
-     * Exemplo: GET http://localhost:8080/jogos/buscar/anoLancamento?anoLancamento=2022
-     * Resposta: 200 com a lista. 400 se o ano não for um número.
-     */
-    @GetMapping("buscar/anoLancamento")
-    public List<JogoResponseDTO>buscarPorAnoLancamento(@RequestParam int anoLancamento) {
-        List<Jogo> lancaento = gameService.buscarJogoPorAnoLancamento(anoLancamento);
-        List<JogoResponseDTO> listaLancamentos = new ArrayList<>();
-        for (Jogo jogo : lancaento) {
-            listaLancamentos.add(JogoResponseDTO.fromJogo(jogo));
-        }
-        return listaLancamentos;
-
-    }
-
-    /**
-     * GET /jogos/buscar/status?status=...
-     * Lista os jogos com um status. Valores aceitos (em maiúsculas): JOGANDO, FINALIZADO, ABANDONADO, PLANEJADO.
-     *
-     * Exemplo: GET http://localhost:8080/jogos/buscar/status?status=JOGANDO
-     * Resposta: 200 com a lista. 400 se o status não for um dos valores aceitos.
-     */
-    @GetMapping("buscar/status")
-    public List<JogoResponseDTO>buscarPorStatus(@RequestParam GameStatus status) {
-        List<Jogo> jogoStatus = gameService.buscarJogoPorStatus(status);
-        List<JogoResponseDTO> listaJogos = new ArrayList<>();
-        for (Jogo jogo : jogoStatus) {
-            listaJogos.add(JogoResponseDTO.fromJogo(jogo));
-        }
-        return listaJogos;
     }
 }
