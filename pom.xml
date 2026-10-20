@@ -56,6 +56,20 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Swagger: documentação interativa da API em /swagger-ui.html (a linha 3.x é a do Spring Boot 4) -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.1.1</version>
+        </dependency>
+
+        <!-- Banco em memória só para os testes: assim o "mvnw test" roda sem precisar do Postgres -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>

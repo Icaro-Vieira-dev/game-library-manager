@@ -1,5 +1,6 @@
 package com.gamelibrary.gamelibrarymanager.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
 import com.gamelibrary.gamelibrarymanager.dto.steam.DetalhesSteamResultadoDTO;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 
+@Tag(name = "Steam", description = "Importação da biblioteca e dos detalhes da loja da Steam")
 @RestController
 @RequestMapping("/importSteam")
 public class SteamController {

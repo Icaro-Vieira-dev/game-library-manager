@@ -1,5 +1,6 @@
 package com.gamelibrary.gamelibrarymanager.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.gamelibrary.gamelibrarymanager.dto.CategoryRequestDTO;
 import com.gamelibrary.gamelibrarymanager.dto.CategoryResponseDTO;
 import com.gamelibrary.gamelibrarymanager.exception.CategoriaNaoEncontrada;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 
+@Tag(name = "Categorias", description = "Categorias (gêneros) e os jogos de cada uma")
 @RestController
 @RequestMapping("/categorias")
 public class CategoryController {

@@ -1,5 +1,6 @@
 package com.gamelibrary.gamelibrarymanager.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.gamelibrary.gamelibrarymanager.dto.JogoRequestDTO;
 import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.ListIterator;
 
 
+@Tag(name = "Jogos", description = "Cadastro, busca, platina, conquistas e categorias dos jogos")
 @RestController
 @RequestMapping("/jogos")
 public class GameController {

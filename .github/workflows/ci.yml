@@ -1,0 +1,28 @@
+# CI (Integração Contínua): a cada push ou pull request na main, o GitHub
+# baixa o código numa máquina Linux limpa, instala o Java 25 e roda todos os testes.
+# O resultado aparece na aba "Actions" do repositório e no selo do README.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar o Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven   # guarda as dependências entre execuções, para os próximos builds serem mais rápidos
+
+      - name: Rodar os testes
+        run: ./mvnw -B test   # -B = modo "batch", sem cores e animações no log

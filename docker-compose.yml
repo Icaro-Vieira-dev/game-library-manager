@@ -1,0 +1,29 @@
+# Sobe o PostgreSQL que a aplicação usa, já configurado, com um comando:
+#   docker compose up -d
+#
+# Usuário e senha vêm do arquivo .env (DB_USERNAME e DB_PASSWORD), o mesmo que a aplicação lê.
+# O Docker Compose lê o .env da pasta sozinho.
+services:
+  postgres:
+    image: postgres:18
+    container_name: gamelibrary-postgres
+    environment:
+      POSTGRES_DB: gamelibrary
+      POSTGRES_USER: ${DB_USERNAME:?Preencha DB_USERNAME no arquivo .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Preencha DB_PASSWORD no arquivo .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      # os dados ficam num volume com nome: apagar o container não apaga o banco
+      - gamelibrary-dados:/var/lib/postgresql
+    # religa o banco sozinho quando o Docker iniciar (a não ser que você pare com "docker compose stop")
+    restart: unless-stopped
+    # o Docker considera o banco "pronto" só quando ele aceitar conexões
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d gamelibrary"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  gamelibrary-dados:

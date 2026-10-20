@@ -4,6 +4,7 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4-6DB33F?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)
 ![Steam API](https://img.shields.io/badge/Steam-API-1b2838?logo=steam&logoColor=white)
+[![CI](https://github.com/Icaro-Vieira-dev/game-library-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/Icaro-Vieira-dev/game-library-manager/actions/workflows/ci.yml)
 
 API REST para gerenciar sua biblioteca pessoal de jogos com integração direta à Steam. Em vez de cadastrar jogo por jogo, você conecta sua conta da Steam e importa toda a sua biblioteca automaticamente — jogos jogados, tempo de jogo incluído. 🕹️
 
@@ -28,40 +29,47 @@ API REST para gerenciar sua biblioteca pessoal de jogos com integração direta 
 - 🐘 **PostgreSQL**
 - ✔️ **Spring Validation**
 - 🌐 **RestTemplate** (consumo da API da Steam)
+- 📖 **springdoc-openapi** (documentação interativa com Swagger)
+- 🐳 **Docker Compose** (banco de dados)
+- 🧪 **JUnit 5** + **H2** (testes) e **GitHub Actions** (CI)
 
 ## 📋 Pré-requisitos
 
 - ☕ Java 25+
-- 📦 Maven (ou o `./mvnw` que já vem no projeto)
-- 🐘 PostgreSQL rodando em `localhost:5432`
-
-## 🐘 Configuração do banco
-
-Crie um banco de dados PostgreSQL com as seguintes credenciais (ou ajuste em `application.properties`):
-
-```
-database: gamelibrary
-username: admin
-password: admin
-```
-
-O Hibernate cria as tabelas automaticamente (`ddl-auto=update`).
+- 🐳 Docker (para o banco), ou um PostgreSQL rodando em `localhost:5432`
+- O Maven não precisa: o projeto usa o `./mvnw`, que já vem junto
 
 <a id="configuracao-da-steam"></a>
-## 🔑 Configuração da Steam
+## 🔑 Configuração (`.env`)
 
-A chave da API e o seu Steam ID ficam num arquivo `.env` na raiz do projeto. 🔒 Esse arquivo está no `.gitignore`, então a sua chave nunca vai para o GitHub.
+Tudo o que é segredo fica num arquivo `.env` na raiz do projeto. 🔒 Esse arquivo está no `.gitignore`, então nada dele vai para o GitHub.
 
 1. Copie o modelo: `cp .env.example .env`
 2. Preencha os valores, sem aspas e sem espaços:
 
 ```
+DB_USERNAME=seu_usuario
+DB_PASSWORD=sua_senha
 STEAM_API_KEY=sua_chave
 STEAM_ID=76561198xxxxxxxxx
 ```
 
-- 🗝️ **API Key:** [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
-- 🆔 **Steam ID:** use o SteamID64, com 17 dígitos e começando com `7656`. Ele aparece em [steamid.io](https://steamid.io).
+- 🐘 **DB_USERNAME / DB_PASSWORD:** o usuário e a senha do banco. O Docker Compose cria o banco com esses mesmos valores.
+- 🗝️ **STEAM_API_KEY:** [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
+- 🆔 **STEAM_ID:** use o SteamID64, com 17 dígitos e começando com `7656`. Ele aparece em [steamid.io](https://steamid.io).
+
+## 🐘 Banco de dados
+
+Com o `.env` preenchido, suba o PostgreSQL com um comando:
+
+```bash
+docker compose up -d
+```
+
+- O banco `gamelibrary` é criado com o usuário e a senha do `.env`.
+- Os dados ficam num volume do Docker: parar ou apagar o container **não** apaga o banco.
+- Ele religa sozinho quando o Docker iniciar (`restart: unless-stopped`).
+- O Hibernate cria as tabelas automaticamente (`ddl-auto=update`).
 
 ## 🚀 Como rodar
 
@@ -71,13 +79,21 @@ STEAM_ID=76561198xxxxxxxxx
 
 💻 A API sobe em `http://localhost:8080`.
 
+## 📖 Documentação interativa (Swagger)
+
+Com a API rodando, abra **[http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)**: lá estão todos os endpoints, agrupados em **Jogos**, **Categorias** e **Steam**, e dá para **testar cada um direto no navegador** (botão *Try it out*), sem Postman.
+
+O mesmo conteúdo, em formato OpenAPI (JSON), fica em `http://localhost:8080/v3/api-docs`.
+
 ## 🧪 Testes
 
 ```bash
-./mvnw test -Dtest='SteamService*Test'
+./mvnw test
 ```
 
-São testes unitários da regra de status da importação e da leitura do ano de lançamento. ⚡ Eles rodam sem banco e sem acessar a Steam.
+- ⚡ Rodam **sem PostgreSQL e sem `.env`**: o teste da aplicação inteira usa um banco **H2 em memória**.
+- Cobrem a regra de status da importação, a leitura do ano de lançamento e a subida da aplicação (15 testes).
+- ✅ Rodam sozinhos no **GitHub Actions** a cada push (o selo **CI** no topo mostra o resultado).
 
 ---
 
@@ -329,12 +345,20 @@ src/main/java/com/gamelibrary/gamelibrarymanager/
 │   ├── CategoriaDuplicadaException.java
 │   ├── RequisicaoInvalidaException.java
 │   └── SteamImportacaoException.java
-└── AppConfig.java
+├── AppConfig.java
+└── OpenApiConfig.java          (textos do Swagger)
 
-src/test/java/com/gamelibrary/gamelibrarymanager/
-└── service/
-    ├── SteamServiceStatusTest.java
-    └── SteamServiceAnoTest.java
+src/test/
+├── java/com/gamelibrary/gamelibrarymanager/
+│   ├── GameLiabraryManagerApplicationTests.java   (sobe a aplicação com H2)
+│   └── service/
+│       ├── SteamServiceStatusTest.java
+│       └── SteamServiceAnoTest.java
+└── resources/
+    └── application-test.properties               (H2 em memória)
 ```
 
-📄 Na raiz do projeto, o `.env.example` é o modelo do `.env` (veja [Configuração da Steam](#configuracao-da-steam)).
+📄 Na raiz do projeto ficam também:
+- `.env.example`: o modelo do `.env` (veja [Configuração](#configuracao-da-steam));
+- `docker-compose.yml`: o banco PostgreSQL;
+- `.github/workflows/ci.yml`: os testes automáticos no GitHub.
