@@ -65,8 +65,10 @@ public class GameController {
      *     "notaJogo": 10,
      *     "desenvolvedoraJogo": "FromSoftware"
      *   }
-     * Regras: nome, gênero, plataforma e status são obrigatórios; ano entre 1958 e 2026;
-     *         horasJogadas maior que 0 (zero é recusado); nota de 1 a 10; desenvolvedora é opcional.
+     * Regras: nome, gênero, plataforma e status são obrigatórios.
+     *         Opcionais: anoLancamentoJogo (de 1958 até o ano atual + 5), notaJogo (de 1 a 10),
+     *         desenvolvedoraJogo. Sem ano ou sem nota, o jogo fica com 0 nesses campos.
+     *         horasJogadas pode ser 0 (jogo ainda não jogado), mas não negativo.
      *         statusJogo aceita: JOGANDO, FINALIZADO, ABANDONADO, PLANEJADO.
      * Resposta: 200 com o jogo criado (já com idJogo). 400 com a lista de campos inválidos.
      */
@@ -169,6 +171,32 @@ public class GameController {
     public ResponseEntity<JogoResponseDTO> removerPlatina(@PathVariable Long id) {
         Jogo jogo = gameService.removerPlatina(id);
         return ResponseEntity.ok(JogoResponseDTO.fromJogo(jogo));
+    }
+
+    /**
+     * PUT /jogos/{id}/categorias/{categoriaId}
+     * Liga o jogo a uma categoria. Um jogo pode ter várias categorias.
+     * Se o jogo já estava nessa categoria, nada muda (não duplica).
+     *
+     * Exemplo: PUT http://localhost:8080/jogos/5/categorias/2   (sem body)
+     * Resposta: 200 com o jogo, já com a categoria em "categorias".
+     *           404 se o jogo ou a categoria não existir.
+     */
+    @PutMapping("/{id}/categorias/{categoriaId}")
+    public JogoResponseDTO vincularCategoria(@PathVariable Long id, @PathVariable Long categoriaId) {
+        return JogoResponseDTO.fromJogo(gameService.vincularCategoria(id, categoriaId));
+    }
+
+    /**
+     * DELETE /jogos/{id}/categorias/{categoriaId}
+     * Tira o jogo de uma categoria. O jogo e a categoria NÃO são apagados, só o vínculo.
+     *
+     * Exemplo: DELETE http://localhost:8080/jogos/5/categorias/2
+     * Resposta: 200 com o jogo, já sem essa categoria. 404 se o jogo ou a categoria não existir.
+     */
+    @DeleteMapping("/{id}/categorias/{categoriaId}")
+    public JogoResponseDTO desvincularCategoria(@PathVariable Long id, @PathVariable Long categoriaId) {
+        return JogoResponseDTO.fromJogo(gameService.desvincularCategoria(id, categoriaId));
     }
 
     /**

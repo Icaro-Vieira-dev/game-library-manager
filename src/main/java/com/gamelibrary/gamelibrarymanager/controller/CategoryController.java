@@ -5,6 +5,7 @@ import com.gamelibrary.gamelibrarymanager.dto.CategoryResponseDTO;
 import com.gamelibrary.gamelibrarymanager.exception.CategoriaNaoEncontrada;
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.service.CategoriaService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +24,7 @@ public class CategoryController {
     /**
      * GET /categorias
      * Lista todas as categorias, cada uma com a lista dos seus jogos.
+     * Categorias são os gêneros: as da Steam são criadas pelo POST /importSteam/detalhes.
      *
      * Exemplo: GET http://localhost:8080/categorias
      * Resposta: 200 com a lista ([] se não houver categorias).
@@ -45,11 +47,12 @@ public class CategoryController {
      *
      * Exemplo: POST http://localhost:8080/categorias
      * Body (JSON): { "nome": "RPG" }
-     * Atenção: hoje o nome não é validado (falta o @Valid); um nome vazio é aceito.
+     * Regras: nome obrigatório, até 100 caracteres; espaços nas pontas são removidos.
      * Resposta: 200 com a categoria criada (já com o id).
+     *           400 se o nome estiver vazio. 409 se já existir uma com esse nome ("rpg" = "RPG").
      */
     @PostMapping
-    public CategoryResponseDTO create(@RequestBody CategoryRequestDTO dtoCategoria){
+    public CategoryResponseDTO create(@Valid @RequestBody CategoryRequestDTO dtoCategoria){
         Categoria categoria = dtoCategoria.toCategoria();
         Categoria categoriaResponse = categoriaService.createCategoria(categoria);
         return CategoryResponseDTO.fromCategory(categoriaResponse);
@@ -61,7 +64,9 @@ public class CategoryController {
      *
      * Exemplo: POST http://localhost:8080/categorias/manyCategories
      * Body (JSON): ["RPG", "Ação", "Estratégia"]
-     * Resposta: 200 com as categorias criadas. Não verifica nomes repetidos.
+     * Nomes que já existem (ou repetidos na lista) são reaproveitados, sem duplicar.
+     * Resposta: 200 com as categorias (novas e já existentes), sem repetição.
+     *           400 se a lista estiver vazia ou tiver algum nome vazio (nesse caso nada é criado).
      */
     @PostMapping("/manyCategories")
     public List<CategoryResponseDTO> creatMany(@RequestBody List<String> categorias){
@@ -111,7 +116,8 @@ public class CategoryController {
      *
      * Exemplo: DELETE http://localhost:8080/categorias/1
      * Resposta: 204 (sem corpo) se apagou. 404 se não existir.
-     * Atenção: se algum jogo estiver ligado a essa categoria, o banco recusa e a API responde 500.
+     *           409 se algum jogo estiver nessa categoria (a mensagem diz quantos). Tire os jogos antes
+     *           com DELETE /jogos/{id}/categorias/{categoriaId}.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCategory(@PathVariable Long id){
@@ -125,7 +131,7 @@ public class CategoryController {
      *
      * Exemplo: DELETE http://localhost:8080/categorias/deleteAll
      * Resposta: 204 (sem corpo).
-     * Atenção: falha com 500 se algum jogo estiver ligado a alguma categoria.
+     *           409 se qualquer jogo estiver em alguma categoria (nesse caso nada é apagado).
      */
     @DeleteMapping("/deleteAll")
     public ResponseEntity<Void> deleteAll(){

@@ -1,13 +1,12 @@
 package com.gamelibrary.gamelibrarymanager.dto;
 
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
-import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import jakarta.validation.constraints.NotBlank;
-
-import java.util.List;
+import jakarta.validation.constraints.Size;
 
 public class CategoryRequestDTO {
-    @NotBlank
+    @NotBlank(message = "O nome da categoria não pode estar vazio.")
+    @Size(max = 100, message = "O nome da categoria pode ter no máximo 100 caracteres.")
     private String nome;
 
     // Getter
@@ -21,8 +20,9 @@ public class CategoryRequestDTO {
         this.nome = nome;
     }
 
+    // strip() tira espaços do começo e do fim: "  RPG " vira "RPG"
     public Categoria toCategoria(){
-        return new Categoria(this.nome);
+        return new Categoria(this.nome.strip());
     }
 
 }

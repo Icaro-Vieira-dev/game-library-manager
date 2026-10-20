@@ -7,7 +7,7 @@ import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@JsonPropertyOrder({"id","nome", "jogos"})
+@JsonPropertyOrder({"idCategoria","nome", "jogos"})
 public class CategoryResponseDTO {
     private Long idCategoria;
     private String nome;

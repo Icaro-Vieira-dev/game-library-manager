@@ -15,7 +15,8 @@ public class Categoria {
     @NotBlank
     private String nome;
 
-    @OneToMany(mappedBy = "categoria")
+    // lado "inverso" do vínculo: quem manda é o Jogo.categorias (mappedBy aponta para ele)
+    @ManyToMany(mappedBy = "categorias")
     private List<Jogo> jogos = new ArrayList<>();
 
     // construtor

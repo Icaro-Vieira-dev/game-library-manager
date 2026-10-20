@@ -2,6 +2,7 @@ package com.gamelibrary.gamelibrarymanager.service;
 import com.gamelibrary.gamelibrarymanager.dto.steam.SteamConquistaDTO;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoDeletadoException;
 import com.gamelibrary.gamelibrarymanager.exception.JogoNaoEncontradoException;
+import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.model.Conquista;
 import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
@@ -23,13 +24,16 @@ public class GameService{
     private final JogoRepository jogoRepository;
     private final ConquistaRepository conquistaRepository;
     private final SteamService steamService;
+    private final CategoriaService categoriaService;
 
 
     @Autowired
-    public GameService(JogoRepository jogoRepository, ConquistaRepository conquistaRepository, SteamService steamService) {
+    public GameService(JogoRepository jogoRepository, ConquistaRepository conquistaRepository,
+                       SteamService steamService, CategoriaService categoriaService) {
         this.jogoRepository = jogoRepository;
         this.conquistaRepository = conquistaRepository;
         this.steamService = steamService;
+        this.categoriaService = categoriaService;
     }
 
     public List<Jogo> listarTodos(){
@@ -70,7 +74,11 @@ public class GameService{
         return true;
     }
 
+    @Transactional
     public boolean deleteAll(){
+        // o deleteAllInBatch roda SQL direto e não passa pelo JPA, então os vínculos com categorias
+        // (tabela jogo_categorias) precisam sair antes; as conquistas o banco apaga sozinho (ON DELETE CASCADE)
+        jogoRepository.apagarTodosVinculosComCategorias();
         // um único DELETE no banco, em vez de carregar e apagar jogo por jogo
         jogoRepository.deleteAllInBatch();
         return true;
@@ -137,6 +145,24 @@ public class GameService{
         Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
         conquistaRepository.deleteByJogoId(id);
         jogo.setPlatina(null);
+        return jogoRepository.save(jogo);
+    }
+
+    // liga o jogo a uma categoria; se já estava ligado, não faz nada (o Set não duplica)
+    @Transactional
+    public Jogo vincularCategoria(Long id, Long categoriaId){
+        Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
+        Categoria categoria = categoriaService.findCategoriaById(categoriaId);
+        jogo.adicionarCategoria(categoria);
+        return jogoRepository.save(jogo);
+    }
+
+    // desfaz o vínculo; o jogo e a categoria continuam existindo
+    @Transactional
+    public Jogo desvincularCategoria(Long id, Long categoriaId){
+        Jogo jogo = jogoRepository.findById(id).orElseThrow(() -> new JogoNaoEncontradoException(id));
+        Categoria categoria = categoriaService.findCategoriaById(categoriaId);
+        jogo.removerCategoria(categoria);
         return jogoRepository.save(jogo);
     }
 

@@ -53,4 +53,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(422).body(ex.getMessage());
     }
 
+    // 409 Conflict: o pedido é válido, mas conflita com o estado atual (a categoria ainda tem jogos)
+    @ExceptionHandler(CategoriaEmUsoException.class)
+    public ResponseEntity<String> handleCategoriaEmUso(CategoriaEmUsoException ex) {
+        return ResponseEntity.status(409).body(ex.getMessage());
+    }
+
+    // 409 também: criar uma categoria que já existe conflita com o que está no banco
+    @ExceptionHandler(CategoriaDuplicadaException.class)
+    public ResponseEntity<String> handleCategoriaDuplicada(CategoriaDuplicadaException ex) {
+        return ResponseEntity.status(409).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(RequisicaoInvalidaException.class)
+    public ResponseEntity<String> handleRequisicaoInvalida(RequisicaoInvalidaException ex) {
+        return ResponseEntity.status(400).body(ex.getMessage());
+    }
+
 }

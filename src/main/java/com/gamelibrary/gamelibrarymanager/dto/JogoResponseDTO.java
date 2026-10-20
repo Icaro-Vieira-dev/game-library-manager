@@ -2,12 +2,18 @@ package com.gamelibrary.gamelibrarymanager.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.model.GameStatus;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.model.Platina;
 
-@JsonPropertyOrder({"idJogo", "nomeJogo", "generoJogo", "plataformaJogo", "anoLancamentoJogo", "horasJogadas", "statusJogo", "notaJogo", "desenvolvedoraJogo"})
+import java.util.List;
+
+@JsonPropertyOrder({"idJogo", "nomeJogo", "generoJogo", "categorias", "plataformaJogo", "anoLancamentoJogo", "horasJogadas", "statusJogo", "notaJogo", "desenvolvedoraJogo"})
 public class JogoResponseDTO {
+    // %d = steamAppId. Calculada na hora, não fica salva no banco.
+    private static final String URL_CAPA_STEAM = "https://cdn.akamai.steamstatic.com/steam/apps/%d/library_600x900.jpg";
+
     private Long idJogo;
     private String nomeJogo;
     private String generoJogo;
@@ -17,9 +23,21 @@ public class JogoResponseDTO {
     private GameStatus statusJogo;
     private double notaJogo;
     private String desenvolvedoraJogo;
+    // só os nomes, em ordem alfabética. Se fosse o objeto Categoria inteiro, cada categoria
+    // listaria seus jogos, que listariam suas categorias... (loop infinito no JSON)
+    private List<String> categorias;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Long steamAppId;
+
+    // banner horizontal (460x215), sempre existe nos jogos que passaram pelo /importSteam/detalhes
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String imagemBanner;
+
+    // capa vertical (600x900), montada pelo appid. A Steam não garante que exista para todo jogo:
+    // no front-end, se não carregar, use a imagemBanner no lugar.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String imagemCapa;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Platina platina;
@@ -64,8 +82,20 @@ public class JogoResponseDTO {
         return desenvolvedoraJogo;
     }
 
+    public List<String> getCategorias() {
+        return categorias;
+    }
+
     public Long getSteamAppId() {
         return steamAppId;
+    }
+
+    public String getImagemBanner() {
+        return imagemBanner;
+    }
+
+    public String getImagemCapa() {
+        return imagemCapa;
     }
 
     public Platina getPlatina() {
@@ -110,8 +140,20 @@ public class JogoResponseDTO {
         this.desenvolvedoraJogo = desenvolvedoraJogo;
     }
 
+    public void setCategorias(List<String> categorias) {
+        this.categorias = categorias;
+    }
+
     public void setSteamAppId(Long steamAppId) {
         this.steamAppId = steamAppId;
+    }
+
+    public void setImagemBanner(String imagemBanner) {
+        this.imagemBanner = imagemBanner;
+    }
+
+    public void setImagemCapa(String imagemCapa) {
+        this.imagemCapa = imagemCapa;
     }
 
     public void setPlatina(Platina platina) {
@@ -130,7 +172,12 @@ public class JogoResponseDTO {
         dto.setStatusJogo(jogo.getStatusJogo());
         dto.setNotaJogo(jogo.getNotaJogo());
         dto.setDesenvolvedoraJogo(jogo.getDesenvolvedoraJogo());
+        dto.setCategorias(jogo.getCategorias().stream().map(Categoria::getNome).sorted().toList());
         dto.setSteamAppId(jogo.getSteamAppId());
+        dto.setImagemBanner(jogo.getImagemBanner());
+        if (jogo.getSteamAppId() != null) {
+            dto.setImagemCapa(String.format(URL_CAPA_STEAM, jogo.getSteamAppId()));
+        }
         dto.setPlatina(jogo.getPlatina());
 
         return dto;

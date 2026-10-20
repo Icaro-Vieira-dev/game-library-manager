@@ -1,6 +1,9 @@
 package com.gamelibrary.gamelibrarymanager.model;
 import jakarta.persistence.*;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @Entity
 @Table(name = "Jogos")
 public class Jogo {
@@ -19,13 +22,25 @@ public class Jogo {
     // null para jogos cadastrados manualmente; único para não importar o mesmo jogo da Steam duas vezes
     @Column(unique = true)
     private Long steamAppId;
+    // controle interno: true depois que gênero/desenvolvedora/ano foram buscados na loja da Steam
+    // (null = ainda não buscou). Evita buscar de novo o mesmo jogo a cada POST /importSteam/detalhes.
+    private Boolean detalhesLojaBuscados;
+    // URL do banner horizontal (460x215) da loja da Steam; preenchido pelo POST /importSteam/detalhes.
+    // Guarda só o endereço: a imagem continua hospedada na Steam.
+    @Column(length = 500)
+    private String imagemBanner;
     // opcional: null enquanto você não definir uma platina para o jogo
     @Embedded
     private Platina platina;
 
-    @ManyToOne
-    @JoinColumn(name="categoria_id")
-    private Categoria categoria;
+    // um jogo pode ter várias categorias (ex.: Ação + RPG) e uma categoria tem vários jogos.
+    // O vínculo fica na tabela jogo_categorias (jogo_id, categoria_id).
+    // Set e não List: não deixa a mesma categoria entrar duas vezes no mesmo jogo.
+    @ManyToMany
+    @JoinTable(name = "jogo_categorias",
+            joinColumns = @JoinColumn(name = "jogo_id"),
+            inverseJoinColumns = @JoinColumn(name = "categoria_id"))
+    private Set<Categoria> categorias = new HashSet<>();
 
     public Jogo (){}
 
@@ -89,12 +104,33 @@ public class Jogo {
         this.steamAppId = steamAppId;
     }
 
-    public Categoria getCategoria() {
-        return categoria;
+    public Boolean getDetalhesLojaBuscados() {
+        return detalhesLojaBuscados;
     }
 
-    public void setCategoria(Categoria categoria) {
-        this.categoria = categoria;
+    public void setDetalhesLojaBuscados(Boolean detalhesLojaBuscados) {
+        this.detalhesLojaBuscados = detalhesLojaBuscados;
+    }
+
+    public String getImagemBanner() {
+        return imagemBanner;
+    }
+
+    public void setImagemBanner(String imagemBanner) {
+        this.imagemBanner = imagemBanner;
+    }
+
+    public Set<Categoria> getCategorias() {
+        return categorias;
+    }
+
+    // add/remove devolvem false se não mudou nada (já tinha / não tinha a categoria)
+    public boolean adicionarCategoria(Categoria categoria) {
+        return categorias.add(categoria);
+    }
+
+    public boolean removerCategoria(Categoria categoria) {
+        return categorias.remove(categoria);
     }
 
     //Setters.

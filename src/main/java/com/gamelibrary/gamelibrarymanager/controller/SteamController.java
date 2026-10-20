@@ -1,6 +1,7 @@
 package com.gamelibrary.gamelibrarymanager.controller;
 
 import com.gamelibrary.gamelibrarymanager.dto.JogoResponseDTO;
+import com.gamelibrary.gamelibrarymanager.dto.steam.DetalhesSteamResultadoDTO;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
 import com.gamelibrary.gamelibrarymanager.service.SteamService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,5 +44,26 @@ public class SteamController {
 
         return jogosImportados;
 
+    }
+
+    /**
+     * POST /importSteam/detalhes
+     * Completa os jogos importados com dados da LOJA da Steam: gênero, categorias (uma por gênero),
+     * desenvolvedora, ano de lançamento e plataforma (PC). Só preenche campos vazios.
+     * Rode depois do /importar. Não precisa de API key.
+     *
+     * Processa até "limite" jogos por chamada (padrão 50, máximo 200), com 1,5 s entre cada um,
+     * por causa do limite da loja. 50 jogos levam ~75 s. Se "restantes" > 0, chame de novo.
+     *
+     * Exemplos:
+     *   POST http://localhost:8080/importSteam/detalhes
+     *   POST http://localhost:8080/importSteam/detalhes?limite=10
+     * Resposta: 200 com { processados, atualizados, semDadosNaLoja, restantes, mensagem }.
+     */
+    @PostMapping("/detalhes")
+    public DetalhesSteamResultadoDTO completarDetalhes(@RequestParam(defaultValue = "50") int limite) {
+        // garante o intervalo 1..200, para não travar a requisição por muito tempo
+        int limiteSeguro = Math.max(1, Math.min(limite, 200));
+        return steamService.completarDetalhes(limiteSeguro);
     }
 }
