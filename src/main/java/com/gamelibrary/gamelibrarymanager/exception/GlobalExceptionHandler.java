@@ -1,11 +1,18 @@
 package com.gamelibrary.gamelibrarymanager.exception;
 
+import com.gamelibrary.gamelibrarymanager.CookieAutenticacao;
+import com.gamelibrary.gamelibrarymanager.SegurancaConfig;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.core.PropertyReferenceException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -30,6 +37,12 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    private final CookieAutenticacao cookieAutenticacao;
+
+    public GlobalExceptionHandler(CookieAutenticacao cookieAutenticacao) {
+        this.cookieAutenticacao = cookieAutenticacao;
+    }
 
     @ExceptionHandler(JogoNaoEncontradoException.class)
     public ProblemDetail handleJogoNaoEncontrado(JogoNaoEncontradoException ex) {
@@ -85,11 +98,12 @@ public class GlobalExceptionHandler {
         return problema(HttpStatus.UNPROCESSABLE_CONTENT, "Não foi possível falar com a Steam", ex.getMessage());
     }
 
-    // a Steam não respondeu dentro do tempo-limite (AppConfig), ou a internet caiu
+    // um serviço externo (Steam) não respondeu dentro do tempo-limite (AppConfig), ou a internet caiu.
+    // Não use ex.getMessage() aqui nem no log: ela contém a URL da requisição, e a da API da Steam leva a chave.
     @ExceptionHandler(ResourceAccessException.class)
     public ProblemDetail handleSemResposta(ResourceAccessException ex) {
-        return problema(HttpStatus.GATEWAY_TIMEOUT, "A Steam não respondeu",
-                "A Steam demorou demais para responder ou está fora do ar. Tente de novo em alguns minutos.");
+        return problema(HttpStatus.GATEWAY_TIMEOUT, "O serviço externo não respondeu",
+                "O serviço externo (Steam) demorou demais para responder ou está fora do ar. Tente de novo em alguns minutos.");
     }
 
     // 409 Conflict: o pedido é válido, mas conflita com o estado atual (a categoria ainda tem jogos)
@@ -107,6 +121,57 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RequisicaoInvalidaException.class)
     public ProblemDetail handleRequisicaoInvalida(RequisicaoInvalidaException ex) {
         return problema(HttpStatus.BAD_REQUEST, "Requisição inválida", ex.getMessage());
+    }
+
+    // ===== Autenticação =====
+    // Regra destes handlers: nunca colocar senha, hash, token ou chave na resposta nem no log.
+    // As mensagens das nossas exceções são textos fixos (veja cada classe).
+
+    @ExceptionHandler(EmailJaCadastradoException.class)
+    public ProblemDetail handleEmailJaCadastrado(EmailJaCadastradoException ex) {
+        return problema(HttpStatus.CONFLICT, "E-mail já cadastrado", ex.getMessage());
+    }
+
+    @ExceptionHandler(SteamIdJaVinculadoException.class)
+    public ProblemDetail handleSteamIdJaVinculado(SteamIdJaVinculadoException ex) {
+        return problema(HttpStatus.CONFLICT, "Steam ID já vinculado", ex.getMessage());
+    }
+
+    @ExceptionHandler(CredenciaisInvalidasException.class)
+    public ProblemDetail handleCredenciaisInvalidas(CredenciaisInvalidasException ex) {
+        return problema(HttpStatus.UNAUTHORIZED, "Não autenticado", ex.getMessage());
+    }
+
+    // 429 + Retry-After: o cabeçalho diz em quantos segundos o cliente pode tentar de novo
+    @ExceptionHandler(TentativasExcedidasException.class)
+    public ResponseEntity<ProblemDetail> handleTentativasExcedidas(TentativasExcedidasException ex) {
+        ProblemDetail problema = problema(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getSegundosParaTentarDeNovo()))
+                .body(problema);
+    }
+
+    // Erros do Spring Security que acontecem DENTRO de um controller (ex.: token de um usuário que não
+    // existe mais, no GET /usuarios/me). Sem estes dois handlers, o handler genérico de Exception logo
+    // abaixo os pegaria e responderia 500. A mensagem é fixa: não repete o motivo técnico.
+    // (Os erros de token que acontecem ANTES do controller são respondidos pelo SegurancaConfig,
+    // com os mesmos textos e o mesmo cuidado com o cookie.)
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ProblemDetail> handleNaoAutenticado(AuthenticationException ex, HttpServletRequest request) {
+        ProblemDetail problema = problema(HttpStatus.UNAUTHORIZED, "Não autenticado",
+                SegurancaConfig.MENSAGEM_NAO_AUTENTICADO);
+        ResponseEntity.BodyBuilder resposta = ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        // o cookie de login não vale mais (ex.: a conta foi apagada): manda o navegador descartá-lo
+        if (cookieAutenticacao.veioNaRequisicao(request)) {
+            resposta.header(HttpHeaders.SET_COOKIE, cookieAutenticacao.apagar().toString());
+        }
+        return resposta.body(problema);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAcessoNegado(AccessDeniedException ex) {
+        return problema(HttpStatus.FORBIDDEN, "Acesso negado", "Você não tem permissão para acessar este recurso.");
     }
 
     // Rede de segurança: qualquer outro erro.

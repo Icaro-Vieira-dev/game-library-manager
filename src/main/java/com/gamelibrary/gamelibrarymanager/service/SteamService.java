@@ -312,6 +312,10 @@ public class SteamService {
     }
 
     // usa o steamId recebido ou, se vier null/vazio, o STEAM_ID do .env; valida o formato
+    // TODO (etapa "dono dos jogos"): o steamId vai vir do USUÁRIO LOGADO (Usuario.steamId, informado
+    //  no cadastro), e não mais de ?steamId= nem do STEAM_ID do .env. Os jogos importados ficarão
+    //  ligados a esse usuário. A API key continua sendo só a da aplicação (STEAM_API_KEY): nunca
+    //  pedir API key nem senha da Steam ao usuário.
     private String resolverSteamId(String steamId) {
         String steamIdUsado = (steamId == null || steamId.isBlank()) ? steamIdPadrao : steamId.strip();
         if (steamIdUsado.isBlank()) {

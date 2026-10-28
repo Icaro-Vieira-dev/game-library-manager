@@ -63,6 +63,34 @@
             <version>3.1.1</version>
         </dependency>
 
+        <!-- Spring Security: autenticação e autorização de todas as rotas (SegurancaConfig) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- JWT: gera e valida os tokens com o NimbusJwtEncoder/Decoder do próprio Spring.
+             No Boot 4 o nome é este; o antigo "spring-boot-starter-oauth2-resource-server" ficou só por compatibilidade. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- BouncyCastle: implementação do Argon2 usada pelo Argon2PasswordEncoder (hash das senhas).
+             O Spring Boot não gerencia a versão desta biblioteca, por isso ela fica fixa aqui. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
+        </dependency>
+
+        <!-- Ferramentas de teste do Spring Security (ex.: simular um usuário logado no MockMvc) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Banco em memória só para os testes: assim o "mvnw test" roda sem precisar do Postgres -->
         <dependency>
             <groupId>com.h2database</groupId>

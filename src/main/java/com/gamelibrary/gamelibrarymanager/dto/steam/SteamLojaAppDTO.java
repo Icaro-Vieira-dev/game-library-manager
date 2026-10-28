@@ -19,7 +19,9 @@ public record SteamLojaAppDTO(Boolean success, Dados data) {
             @JsonProperty("developers") List<String> desenvolvedoras,
             @JsonProperty("release_date") DataLancamento dataLancamento,
             // URL do banner horizontal; nos jogos novos o caminho tem um código no meio, por isso vale guardar a URL pronta
-            @JsonProperty("header_image") String imagemBanner
+            @JsonProperty("header_image") String imagemBanner,
+            // classificação de conteúdo do jogo (usada pela vitrine para tirar jogos adultos)
+            @JsonProperty("content_descriptors") DescritoresConteudo descritores
     ) {
     }
 
@@ -28,6 +30,20 @@ public record SteamLojaAppDTO(Boolean success, Dados data) {
     }
 
     // ex.: { "coming_soon": false, "date": "24/fev./2022" } (o formato da data muda com o idioma)
-    public record DataLancamento(@JsonProperty("date") String data) {
+    public record DataLancamento(
+            @JsonProperty("date") String data,
+            // true = ainda não foi lançado
+            @JsonProperty("coming_soon") Boolean emBreve
+    ) {
+    }
+
+    // ex. (jogo adulto): { "ids": [1, 3, 4, 5], "notes": "..." }
+    // ex. (jogo normal): { "ids": [], "notes": null }
+    // Os ids estão explicados no VitrineService.IDS_CONTEUDO_ADULTO.
+    public record DescritoresConteudo(List<Integer> ids) {
+        // construtor compacto: se "ids" vier null ou faltar, vira lista vazia
+        public DescritoresConteudo {
+            ids = ids == null ? List.of() : ids;
+        }
     }
 }
