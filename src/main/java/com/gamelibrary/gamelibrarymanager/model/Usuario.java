@@ -57,6 +57,12 @@ public class Usuario {
         return email == null ? null : email.strip().toLowerCase(Locale.ROOT);
     }
 
+    // Troca (ou remove, com null) o Steam ID. Usado só pelo UsuarioService (PATCH /usuarios/me),
+    // que antes confere se o ID não está em outra conta.
+    public void alterarSteamId(String steamId) {
+        this.steamId = steamId;
+    }
+
     // Getter
     // Sem setters: não existe "setSenha". Trocar senha (próximas etapas) vai passar pelo UsuarioService,
     // que é o único lugar que gera hash.

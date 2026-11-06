@@ -130,7 +130,28 @@ public class UsuarioService {
         return gerarToken(usuario.get());
     }
 
-    // Usado pelo GET /usuarios/me: o id vem do "sub" de um token já verificado pelo Spring.
+    // PATCH /usuarios/me: troca o Steam ID do usuário LOGADO (o usuário vem do token, nunca do body).
+    // steamId null = remover (o AtualizarUsuarioRequestDTO já transforma "" em null e tira os espaços).
+    // Steam ID que já está em OUTRA conta -> SteamIdJaVinculadoException (409).
+    public Usuario atualizarSteamId(Usuario usuario, String steamId) {
+        if (steamId != null && usuarioRepository.existsBySteamIdAndIdNot(steamId, usuario.getId())) {
+            throw new SteamIdJaVinculadoException();
+        }
+        usuario.alterarSteamId(steamId);
+        try {
+            return usuarioRepository.save(usuario);
+        } catch (DataIntegrityViolationException e) {
+            // duas contas tentando o mesmo Steam ID ao mesmo tempo: as duas passaram pela conferência
+            // acima, e o UNIQUE do banco recusou a segunda. Confere se foi mesmo o Steam ID antes de
+            // responder 409; se não foi, deixa o erro seguir (vira 500, com log).
+            if (steamId != null && usuarioRepository.existsBySteamIdAndIdNot(steamId, usuario.getId())) {
+                throw new SteamIdJaVinculadoException();
+            }
+            throw e;
+        }
+    }
+
+    // Usado pelo @UsuarioLogado (UsuarioLogadoResolver): o id vem do "sub" de um token já verificado pelo Spring.
     // Se o usuário não existe mais (token válido de uma conta apagada), responde 401 como token inválido.
     public Usuario buscarPorId(Long id) {
         return usuarioRepository.findById(id)

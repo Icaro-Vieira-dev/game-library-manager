@@ -19,6 +19,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
@@ -96,6 +97,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SteamImportacaoException.class)
     public ProblemDetail handleSteamImportacao(SteamImportacaoException ex) {
         return problema(HttpStatus.UNPROCESSABLE_CONTENT, "Não foi possível falar com a Steam", ex.getMessage());
+    }
+
+    // A Steam (API ou loja) RESPONDEU, mas com um erro que o SteamService não trata (ex.: 503 fora do ar,
+    // 429 na importação). 502 Bad Gateway: o nosso servidor está bem, quem falhou foi o de fora.
+    // Os erros que o SteamService já trata (401/403 da chave, "no stats", "not public", 429 da loja) viram
+    // SteamImportacaoException lá dentro e nem chegam aqui.
+    // No log vai SÓ o número do status. Nunca ex.getMessage(), ex.getResponseBodyAsString() nem o próprio ex:
+    // a mensagem traz o corpo cru da resposta (não sabemos o que vem nele), e o formato dela muda entre
+    // versões do Spring (no RestTemplate ela traz até a URL, e a da API da Steam leva a chave).
+    @ExceptionHandler(RestClientResponseException.class)
+    public ProblemDetail handleRespostaComErro(RestClientResponseException ex) {
+        log.warn("Serviço externo respondeu com erro HTTP {}", ex.getStatusCode().value());
+        return problema(HttpStatus.BAD_GATEWAY, "A Steam está com problemas",
+                "A Steam respondeu com erro. Tente de novo em alguns minutos.");
     }
 
     // um serviço externo (Steam) não respondeu dentro do tempo-limite (AppConfig), ou a internet caiu.

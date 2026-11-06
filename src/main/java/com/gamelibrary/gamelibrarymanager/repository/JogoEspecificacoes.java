@@ -3,6 +3,7 @@ package com.gamelibrary.gamelibrarymanager.repository;
 import com.gamelibrary.gamelibrarymanager.dto.FiltroJogosDTO;
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
+import com.gamelibrary.gamelibrarymanager.model.Usuario;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
@@ -19,9 +20,13 @@ public final class JogoEspecificacoes {
         // classe só de métodos estáticos: não faz sentido criar objetos dela
     }
 
-    public static Specification<Jogo> comFiltros(FiltroJogosDTO filtro) {
+    // usuario é OBRIGATÓRIO: a condição "jogo é desse usuário" entra SEMPRE, antes de qualquer filtro
+    public static Specification<Jogo> comFiltros(FiltroJogosDTO filtro, Usuario usuario) {
         return (root, query, cb) -> {
             List<Predicate> condicoes = new ArrayList<>();
+
+            // where usuario_id = ? (sem isso, a busca traria os jogos de todo mundo)
+            condicoes.add(cb.equal(root.get("usuario"), usuario));
 
             if (temTexto(filtro.nome())) {
                 // LIKE '%ring%' sem diferenciar maiúsculas: lower(nome) like '%ring%'
@@ -41,13 +46,14 @@ public final class JogoEspecificacoes {
             }
             if (temTexto(filtro.categoria())) {
                 // "entra" na lista de categorias do jogo (o JOIN com a tabela jogo_categorias)
+                // e compara pelo nome normalizado ("AÇÃO" acha "Ação")
                 Join<Jogo, Categoria> categorias = root.join("categorias");
-                condicoes.add(cb.equal(cb.lower(categorias.get("nome")), filtro.categoria().strip().toLowerCase()));
+                condicoes.add(cb.equal(categorias.get("nomeNormalizado"), Categoria.normalizarNome(filtro.categoria())));
                 // sem o distinct, um jogo apareceria uma vez para cada categoria que bate
                 query.distinct(true);
             }
 
-            // nenhum filtro = nenhuma condição = todos os jogos
+            // sem filtros = só a condição do dono = todos os jogos DESSE usuário
             return cb.and(condicoes.toArray(Predicate[]::new));
         };
     }

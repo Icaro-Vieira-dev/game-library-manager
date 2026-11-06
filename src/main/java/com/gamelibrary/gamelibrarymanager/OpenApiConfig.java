@@ -3,6 +3,7 @@ package com.gamelibrary.gamelibrarymanager;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
+import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -10,6 +11,12 @@ import org.springframework.context.annotation.Configuration;
 // A lista de endpoints o springdoc monta sozinho, lendo os controllers.
 @Configuration
 public class OpenApiConfig {
+
+    // O parâmetro "@UsuarioLogado Usuario usuario" dos controllers é preenchido pelo token, e não pelo
+    // cliente. Sem isto, o Swagger o mostraria como um campo para o cliente preencher.
+    static {
+        SpringDocUtils.getConfig().addAnnotationsToIgnore(UsuarioLogado.class);
+    }
 
     @Bean
     public OpenAPI documentacaoDaApi() {

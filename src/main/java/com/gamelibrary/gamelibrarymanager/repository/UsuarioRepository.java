@@ -13,4 +13,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByEmail(String email);
 
     boolean existsBySteamId(String steamId);
+
+    // o Steam ID está em OUTRA conta (que não é a do id informado)? Usado no PATCH /usuarios/me
+    boolean existsBySteamIdAndIdNot(String steamId, Long id);
 }

@@ -3,8 +3,11 @@ package com.gamelibrary.gamelibrarymanager.controller;
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
 import com.gamelibrary.gamelibrarymanager.model.StatusJogo;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
+import com.gamelibrary.gamelibrarymanager.model.Usuario;
 import com.gamelibrary.gamelibrarymanager.repository.CategoriaRepository;
 import com.gamelibrary.gamelibrarymanager.repository.JogoRepository;
+import com.gamelibrary.gamelibrarymanager.repository.UsuarioRepository;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,8 +16,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.filter.CharacterEncodingFilter;
 
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -42,26 +49,61 @@ class JogoApiIntegracaoTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private WebApplicationContext contexto;
+
+    @Autowired
     private JogoRepository jogoRepository;
 
     @Autowired
     private CategoriaRepository categoriaRepository;
 
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
     @BeforeEach
-    void criarJogos() {
-        Categoria rpg = categoriaRepository.save(new Categoria("RPG"));
-        Categoria acao = categoriaRepository.save(new Categoria("Ação"));
+    void criarJogos() throws Exception {
+        // jogos e categorias agora exigem login e têm dono: os dados do teste são de um usuário logado
+        Usuario dono = logarComo("dono-dos-testes@email.com");
+
+        Categoria rpg = categoriaRepository.save(new Categoria("RPG", dono));
+        Categoria acao = categoriaRepository.save(new Categoria("Ação", dono));
 
         Jogo elden = new Jogo("Elden Ring", StatusJogo.FINALIZADO, "RPG", "PC", "FromSoftware", 2022, 80, 10);
+        elden.setUsuario(dono);
         elden.adicionarCategoria(rpg);
         elden.adicionarCategoria(acao);
         jogoRepository.save(elden);
 
         Jogo hades = new Jogo("Hades", StatusJogo.JOGANDO, "Ação", "PC", "Supergiant", 2020, 40, 9);
+        hades.setUsuario(dono);
         hades.adicionarCategoria(acao);
         jogoRepository.save(hades);
 
-        jogoRepository.save(new Jogo("Zelda: Tears of the Kingdom", StatusJogo.PLANEJADO, "Aventura", "Switch", "Nintendo", 2023, 0, 0));
+        Jogo zelda = new Jogo("Zelda: Tears of the Kingdom", StatusJogo.PLANEJADO, "Aventura", "Switch", "Nintendo", 2023, 0, 0);
+        zelda.setUsuario(dono);
+        jogoRepository.save(zelda);
+    }
+
+    // Cadastra e loga um usuário e troca o mockMvc por um que manda o cookie de login em TODA requisição
+    // (defaultRequest). Assim os testes abaixo continuam iguais, sem repetir o cookie em cada chamada.
+    // springSecurity(): passa pela cadeia do Spring Security, como o mockMvc automático;
+    // CharacterEncodingFilter: o UTF-8 que o Spring Boot põe no automático (por causa dos acentos).
+    private Usuario logarComo(String email) throws Exception {
+        String senha = "senha-forte-123";
+        mockMvc.perform(post("/auth/cadastro").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nome\":\"Dono\",\"email\":\"" + email + "\",\"senha\":\"" + senha + "\"}"))
+                .andExpect(status().isCreated());
+        Cookie login = mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"senha\":\"" + senha + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getCookie("token");
+
+        mockMvc = MockMvcBuilders.webAppContextSetup(contexto)
+                .addFilters(new CharacterEncodingFilter("UTF-8", true))
+                .apply(springSecurity())
+                .defaultRequest(get("/").cookie(new Cookie(login.getName(), login.getValue())))
+                .build();
+        return usuarioRepository.findByEmail(email).orElseThrow();
     }
 
     // ===== Item 6: busca unificada com paginação =====

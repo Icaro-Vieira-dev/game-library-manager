@@ -158,14 +158,18 @@ class AutenticacaoCookieIntegracaoTest {
     }
 
     @Test
-    void origemMaliciosa_numaRotaPublicaQueNaoEhDeLogin_403ENadaEhCriado() throws Exception {
-        // prova que o FiltroOrigem protege a API inteira, e não só o /auth
-        mockMvc.perform(post("/categorias").header(HttpHeaders.ORIGIN, ORIGEM_MALICIOSA)
+    void origemMaliciosa_numaRotaQueNaoEhDeLogin_403ENadaEhCriado() throws Exception {
+        // prova que o FiltroOrigem protege a API inteira, e não só o /auth. E COM o cookie válido da vítima,
+        // que é exatamente o ataque de CSRF: o site malicioso usa o login que já está no navegador.
+        Cookie daVitima = new Cookie("token", cadastrarELogar("vitima-csrf@email.com"));
+
+        mockMvc.perform(post("/categorias").cookie(daVitima).header(HttpHeaders.ORIGIN, ORIGEM_MALICIOSA)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"nome\":\"Categoria do Atacante\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.detail").value("Origem não permitida."));
 
-        mockMvc.perform(get("/categorias"))
+        mockMvc.perform(get("/categorias").cookie(daVitima))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].nome", not(hasItem("Categoria do Atacante"))));
     }
 
@@ -183,7 +187,8 @@ class AutenticacaoCookieIntegracaoTest {
     @Test
     void origemDaPropriaApi_passa() throws Exception {
         // o Swagger roda na própria API; no MockMvc a API é http://localhost (porta 80, que o navegador omite)
-        mockMvc.perform(post("/categorias").header(HttpHeaders.ORIGIN, "http://localhost")
+        Cookie login = new Cookie("token", cadastrarELogar("pelo-swagger@email.com"));
+        mockMvc.perform(post("/categorias").cookie(login).header(HttpHeaders.ORIGIN, "http://localhost")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"nome\":\"Pelo Swagger\"}"))
                 .andExpect(status().isOk());
     }
@@ -191,7 +196,8 @@ class AutenticacaoCookieIntegracaoTest {
     @Test
     void semOrigin_passa() throws Exception {
         // cliente fora do navegador (Postman, curl): não sofre CSRF
-        mockMvc.perform(post("/categorias")
+        Cookie login = new Cookie("token", cadastrarELogar("pelo-postman@email.com"));
+        mockMvc.perform(post("/categorias").cookie(login)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"nome\":\"Pelo Postman\"}"))
                 .andExpect(status().isOk());
     }

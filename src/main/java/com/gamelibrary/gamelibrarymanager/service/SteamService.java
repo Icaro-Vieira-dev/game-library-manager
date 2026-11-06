@@ -11,6 +11,7 @@ import com.gamelibrary.gamelibrarymanager.dto.steam.SteamBibliotecaResponseDTO;
 import com.gamelibrary.gamelibrarymanager.exception.SteamImportacaoException;
 import com.gamelibrary.gamelibrarymanager.model.StatusJogo;
 import com.gamelibrary.gamelibrarymanager.model.Jogo;
+import com.gamelibrary.gamelibrarymanager.model.Usuario;
 import com.gamelibrary.gamelibrarymanager.repository.JogoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,36 +46,52 @@ public class SteamService {
     // não jogou recentemente e tem pelo menos isso de tempo = provavelmente zerou (FINALIZADO)
     private static final int MINUTOS_PARA_FINALIZADO = 10 * 60;
 
+
+    // a Steam esconde jogos grátis por padrão; com true, vêm os que você já jogou
+    private static final boolean INCLUIR_JOGOS_GRATUITOS = true;
+    // jogos ganhos de graça (promoções, brindes, testes)
+    private static final boolean INCLUIR_INSCRICAO_GRATUITA = true;
+    // false = não pular os apps "não verificados" que a Steam esconde por padrão
+    private static final boolean PULAR_APP_NAO_VERIFICADO = false;
+
+
+    // mensagens do 422 quando o usuário ainda não informou o Steam ID (ou o removeu)
+    static final String SEM_STEAM_ID = "Cadastre o seu Steam ID antes de importar (PATCH /usuarios/me).";
+    static final String SEM_STEAM_ID_CONQUISTAS =
+            "Cadastre o seu Steam ID (PATCH /usuarios/me) para buscar as conquistas na Steam.";
+
     private final RestClient restClient;
     private final JogoRepository jogoRepository;
     private final CategoriaService categoriaService;
-    // vêm do application.properties, que por sua vez lê o arquivo .env
+    // a chave da APLICAÇÃO (vem do application.properties, que lê o .env). Nunca pedimos nem guardamos
+    // a chave da Steam do usuário: dele, só usamos o Steam ID público (Usuario.steamId).
     private final String apiKey;
-    private final String steamIdPadrao;
 
     @Autowired
     public SteamService(RestClient restClient, JogoRepository jogoRepository, CategoriaService categoriaService,
-                        @Value("${steam.api-key}") String apiKey,
-                        @Value("${steam.steam-id}") String steamIdPadrao) {
+                        @Value("${steam.api-key}") String apiKey) {
         this.restClient = restClient;
         this.jogoRepository = jogoRepository;
         this.categoriaService = categoriaService;
         this.apiKey = apiKey;
-        this.steamIdPadrao = steamIdPadrao;
     }
 
-    // steamId é opcional: se vier null ou vazio, usa o STEAM_ID do .env.
-    // Jogos novos são cadastrados; nos que já existem (mesmo appid), só as horas jogadas são atualizadas.
+    // Importa a biblioteca da Steam do USUÁRIO LOGADO, usando o Steam ID dele (sem Steam ID -> 422).
+    // Jogos novos são cadastrados com ele como dono; nos que ele já tem (mesmo appid), só as horas
+    // jogadas são atualizadas. Os jogos dos outros usuários não são tocados.
     @Transactional
-    public ImportacaoSteamResultadoDTO importarJogos(String steamId){
+    public ImportacaoSteamResultadoDTO importarJogos(Usuario usuario){
         validarApiKey();
-        String steamIdUsado = resolverSteamId(steamId);
+        String steamIdUsado = steamIdObrigatorio(usuario.getSteamId(), SEM_STEAM_ID);
 
         // monta a URL com os parâmetros já codificados (ex.: espaços e acentos não quebram a URL)
         URI url = UriComponentsBuilder.fromUriString(URL_JOGOS_DO_USUARIO)
                 .queryParam("key", apiKey)
                 .queryParam("steamid", steamIdUsado)
                 .queryParam("include_appinfo", true)
+                .queryParam("include_played_free_games", INCLUIR_JOGOS_GRATUITOS)
+                .queryParam("include_free_sub", INCLUIR_INSCRICAO_GRATUITA)
+                .queryParam("skip_unvetted_apps", PULAR_APP_NAO_VERIFICADO)
                 .build()
                 .toUri();
 
@@ -93,13 +110,16 @@ public class SteamService {
                     + ". Verifique se o ID está correto e se os detalhes de jogo do perfil estão públicos.");
         }
 
-        // os jogos da Steam que já estão no banco, indexados pelo appid
+        // os jogos da Steam que ESSE usuário já tem no banco, indexados pelo appid
         Map<Long, Jogo> jaImportados = new HashMap<>();
-        for (Jogo jogo : jogoRepository.findBySteamAppIdIsNotNull()) {
+        for (Jogo jogo : jogoRepository.findByUsuarioAndSteamAppIdIsNotNull(usuario)) {
             jaImportados.put(jogo.getSteamAppId(), jogo);
         }
 
         ResultadoMescla resultado = mesclarBiblioteca(responseDTO.response().jogos(), jaImportados, Instant.now());
+        // os jogos novos nascem com o dono logado (a mescla é static e não conhece usuário; sem dono,
+        // o banco recusaria o INSERT, porque usuario_id é NOT NULL)
+        resultado.novos().forEach(jogo -> jogo.setUsuario(usuario));
         List<Jogo> novosSalvos = jogoRepository.saveAll(resultado.novos());
         jogoRepository.saveAll(resultado.atualizados());
 
@@ -146,11 +166,12 @@ public class SteamService {
         return new ResultadoMescla(novos, atualizados);
     }
 
-    // Busca na Steam todas as conquistas de um jogo, marcando quais o usuário do STEAM_ID (.env) já desbloqueou.
-    // Lança SteamImportacaoException (422) se o jogo não tiver conquistas ou o perfil estiver privado.
-    public List<SteamConquistaDTO> buscarConquistas(long steamAppId) {
+    // Busca na Steam todas as conquistas de um jogo, marcando quais o DONO do jogo já desbloqueou
+    // (steamIdDoDono = Usuario.steamId do dono). Lança SteamImportacaoException (422) se o dono não tiver
+    // Steam ID, se o jogo não tiver conquistas ou se o perfil estiver privado.
+    public List<SteamConquistaDTO> buscarConquistas(long steamAppId, String steamIdDoDono) {
         validarApiKey();
-        String steamIdUsado = resolverSteamId(null);
+        String steamIdUsado = steamIdObrigatorio(steamIdDoDono, SEM_STEAM_ID_CONQUISTAS);
 
         URI url = UriComponentsBuilder.fromUriString(URL_CONQUISTAS_DO_USUARIO)
                 .queryParam("key", apiKey)
@@ -175,7 +196,8 @@ public class SteamService {
             if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
                 throw new SteamImportacaoException("A Steam recusou a API key. Confira o valor de STEAM_API_KEY no arquivo .env.");
             }
-            throw new SteamImportacaoException("A Steam respondeu com erro " + e.getStatusCode().value() + " ao buscar as conquistas: " + corpo);
+            // só o status: o corpo cru da Steam não vai para o cliente (não sabemos o que vem nele)
+            throw new SteamImportacaoException("A Steam respondeu com erro " + e.getStatusCode().value() + " ao buscar as conquistas.");
         }
 
         // alguns jogos têm "stats" mas nenhuma conquista: a lista vem vazia ou nem vem
@@ -187,13 +209,14 @@ public class SteamService {
         return responseDTO.playerstats().conquistas();
     }
 
-    // Completa gênero, categorias, desenvolvedora, ano e plataforma dos jogos importados da Steam,
-    // consultando a LOJA da Steam (não precisa de API key). Processa até "limite" jogos por chamada,
-    // com uma pausa entre eles para respeitar o limite da loja (~200 consultas a cada 5 minutos).
+    // Completa gênero, categorias, desenvolvedora, ano e plataforma dos jogos importados da Steam
+    // DO USUÁRIO LOGADO, consultando a LOJA da Steam (não precisa de API key). Processa até "limite" jogos
+    // por chamada, com uma pausa entre eles para respeitar o limite da loja (~200 consultas a cada 5 minutos).
     // Só preenche campos vazios: o que você editou à mão não é sobrescrito.
+    // As categorias criadas aqui são do usuário.
     @Transactional
-    public DetalhesSteamResultadoDTO completarDetalhes(int limite) {
-        List<Jogo> pendentes = jogoRepository.findBySteamAppIdIsNotNullAndDetalhesLojaBuscadosIsNullOrderByIdJogoAsc(Limit.of(limite));
+    public DetalhesSteamResultadoDTO completarDetalhes(int limite, Usuario usuario) {
+        List<Jogo> pendentes = jogoRepository.findByUsuarioAndSteamAppIdIsNotNullAndDetalhesLojaBuscadosIsNullOrderByIdJogoAsc(usuario, Limit.of(limite));
 
         int processados = 0;
         int atualizados = 0;
@@ -222,13 +245,13 @@ public class SteamService {
                 continue;
             }
 
-            aplicarDadosLoja(jogo, dados);
+            aplicarDadosLoja(jogo, dados, usuario);
             jogo.setDetalhesLojaBuscados(true);
             atualizados++;
         }
         jogoRepository.saveAll(pendentes);
 
-        long restantes = jogoRepository.countBySteamAppIdIsNotNullAndDetalhesLojaBuscadosIsNull();
+        long restantes = jogoRepository.countByUsuarioAndSteamAppIdIsNotNullAndDetalhesLojaBuscadosIsNull(usuario);
         if (restantes > 0 && mensagem.equals("Concluído.")) {
             mensagem = "Ainda faltam " + restantes + " jogo(s). Chame de novo para continuar.";
         }
@@ -255,13 +278,14 @@ public class SteamService {
     }
 
     // preenche só o que está vazio
-    private void aplicarDadosLoja(Jogo jogo, SteamLojaAppDTO.Dados dados) {
+    private void aplicarDadosLoja(Jogo jogo, SteamLojaAppDTO.Dados dados, Usuario dono) {
         List<SteamLojaAppDTO.Genero> generos = (dados.generos() == null) ? List.of() : dados.generos();
 
-        // cada gênero da Steam vira uma categoria (reaproveita se já existir) ligada ao jogo
+        // cada gênero da Steam vira uma categoria DO DONO (reaproveita se ele já tiver) ligada ao jogo.
+        // Jogo e categoria são do mesmo usuário: um vínculo nunca junta donos diferentes.
         for (SteamLojaAppDTO.Genero genero : generos) {
             if (genero.descricao() != null && !genero.descricao().isBlank()) {
-                jogo.adicionarCategoria(categoriaService.buscarOuCriarPorNome(genero.descricao()));
+                jogo.adicionarCategoria(categoriaService.buscarOuCriarPorNome(genero.descricao(), dono));
             }
         }
         // o primeiro gênero é o principal
@@ -311,22 +335,13 @@ public class SteamService {
         }
     }
 
-    // usa o steamId recebido ou, se vier null/vazio, o STEAM_ID do .env; valida o formato
-    // TODO (etapa "dono dos jogos"): o steamId vai vir do USUÁRIO LOGADO (Usuario.steamId, informado
-    //  no cadastro), e não mais de ?steamId= nem do STEAM_ID do .env. Os jogos importados ficarão
-    //  ligados a esse usuário. A API key continua sendo só a da aplicação (STEAM_API_KEY): nunca
-    //  pedir API key nem senha da Steam ao usuário.
-    private String resolverSteamId(String steamId) {
-        String steamIdUsado = (steamId == null || steamId.isBlank()) ? steamIdPadrao : steamId.strip();
-        if (steamIdUsado.isBlank()) {
-            throw new SteamImportacaoException("Nenhum steamId informado. Passe ?steamId=... na requisição ou preencha STEAM_ID no arquivo .env.");
+    // O Steam ID vem SEMPRE do usuário (Usuario.steamId, informado no cadastro ou no PATCH /usuarios/me),
+    // nunca de parâmetro da requisição nem do .env. O formato já foi validado quando ele foi salvo.
+    private static String steamIdObrigatorio(String steamIdDoUsuario, String mensagemSeFaltar) {
+        if (steamIdDoUsuario == null || steamIdDoUsuario.isBlank()) {
+            throw new SteamImportacaoException(mensagemSeFaltar);
         }
-        // SteamID64 sempre tem 17 dígitos. Nome de perfil personalizado (ex.: "icaro") não funciona nessa API.
-        if (!steamIdUsado.matches("\\d{17}")) {
-            throw new SteamImportacaoException("steamId inválido: " + steamIdUsado
-                    + ". Use o SteamID64, com 17 dígitos (começa com 7656...). Você encontra em https://steamid.io");
-        }
-        return steamIdUsado;
+        return steamIdDoUsuario;
     }
 
     // Regra do status inicial de um jogo importado:

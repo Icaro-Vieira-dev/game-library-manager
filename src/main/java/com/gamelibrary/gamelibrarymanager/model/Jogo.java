@@ -5,11 +5,22 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "Jogos")
+// o mesmo jogo da Steam não entra duas vezes na biblioteca da MESMA pessoa; pessoas diferentes podem ter
+// o mesmo jogo (por isso o par usuario_id + steam_app_id é que é único, e não o steam_app_id sozinho).
+// Jogos manuais têm steam_app_id null, e NULL não conta como repetido.
+@Table(name = "Jogos", uniqueConstraints = @UniqueConstraint(columnNames = {"usuario_id", "steam_app_id"}))
 public class Jogo {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long idJogo;
+
+    // o DONO do jogo. Todo jogo tem um (NOT NULL), e cada usuário só enxerga os próprios.
+    // LAZY: o usuário só é buscado no banco se alguém pedir algo além do id.
+    // Nunca vai para o JSON (o JogoResponseDTO não tem esse campo).
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "usuario_id", nullable = false)
+    private Usuario usuario;
+
     private String nomeJogo;
     private String generoJogo;
     private String plataformaJogo;
@@ -19,8 +30,7 @@ public class Jogo {
     private StatusJogo statusJogo;
     private double notaJogo;
     private String desenvolvedoraJogo;
-    // null para jogos cadastrados manualmente; único para não importar o mesmo jogo da Steam duas vezes
-    @Column(unique = true)
+    // null para jogos cadastrados manualmente. Único POR USUÁRIO (veja o @Table acima)
     private Long steamAppId;
     // controle interno: true depois que gênero/desenvolvedora/ano foram buscados na loja da Steam
     // (null = ainda não buscou). Evita buscar de novo o mesmo jogo a cada POST /steam/detalhes.
@@ -98,6 +108,15 @@ public class Jogo {
 
     public Long getSteamAppId() {
         return steamAppId;
+    }
+
+    public Usuario getUsuario() {
+        return usuario;
+    }
+
+    // usado só pelos services, sempre com o usuário logado (nunca com um id vindo da requisição)
+    public void setUsuario(Usuario usuario) {
+        this.usuario = usuario;
     }
 
     public void setSteamAppId(Long steamAppId) {

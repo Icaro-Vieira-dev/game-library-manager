@@ -59,7 +59,10 @@ class CacheControlIntegracaoTest {
 
     @Test
     void jogos_continuaSemCache() throws Exception {
-        mockMvc.perform(get("/jogos"))
+        // /jogos agora exige login (são os jogos de cada usuário)
+        Cookie login = cadastrarELogar("cache-jogos@email.com");
+
+        mockMvc.perform(get("/jogos").cookie(login))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, not(containsString("public"))));

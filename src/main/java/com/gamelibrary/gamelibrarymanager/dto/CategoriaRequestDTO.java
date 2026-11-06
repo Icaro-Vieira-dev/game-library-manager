@@ -1,6 +1,7 @@
 package com.gamelibrary.gamelibrarymanager.dto;
 
 import com.gamelibrary.gamelibrarymanager.model.Categoria;
+import com.gamelibrary.gamelibrarymanager.model.Usuario;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -10,8 +11,9 @@ public record CategoriaRequestDTO(
         @Size(max = 100, message = "O nome da categoria pode ter no máximo 100 caracteres.")
         String nome
 ) {
-    // strip() tira espaços do começo e do fim: "  RPG " vira "RPG"
-    public Categoria toCategoria(){
-        return new Categoria(this.nome.strip());
+    // strip() tira espaços do começo e do fim: "  RPG " vira "RPG".
+    // dono = o usuário logado (vem do @UsuarioLogado do controller, nunca do body)
+    public Categoria toCategoria(Usuario dono){
+        return new Categoria(this.nome.strip(), dono);
     }
 }

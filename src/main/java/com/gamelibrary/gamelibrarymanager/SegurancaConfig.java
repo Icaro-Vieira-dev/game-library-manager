@@ -51,6 +51,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 // Configuração de segurança da API: quem pode acessar o quê, como as senhas viram hash,
@@ -63,6 +64,10 @@ public class SegurancaConfig {
     public static final String EMISSOR_JWT = "game-library-manager";
     // HS256 exige uma chave de pelo menos 256 bits = 32 bytes
     private static final int TAMANHO_MINIMO_CHAVE_BYTES = 32;
+    // rotas públicas em que o token nem é lido (o /auth/** também não lê, mas tem regras próprias de POST).
+    // Uma lista só, usada no permitAll e no lerToken: as duas regras nunca ficam diferentes.
+    private static final String[] ROTAS_PUBLICAS_SEM_TOKEN =
+            {"/vitrine/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**"};
     // texto fixo de todo 401 por falta de login (aqui e no GlobalExceptionHandler)
     public static final String MENSAGEM_NAO_AUTENTICADO =
             "É preciso fazer login (cookie de sessão ou cabeçalho Authorization: Bearer <token>).";
@@ -180,13 +185,12 @@ public class SegurancaConfig {
                         // cadastro, login e logout: públicos, mas SÓ com POST
                         // (outros métodos nessas rotas caem no "negar por padrão")
                         .requestMatchers(HttpMethod.POST, "/auth/cadastro", "/auth/login", "/auth/logout").permitAll()
-                        // rotas que já existiam continuam públicas por enquanto
-                        // (ligar cada jogo ao seu dono é a próxima etapa)
-                        .requestMatchers("/jogos/**", "/categorias/**", "/steam/**", "/vitrine/**").permitAll()
-                        // documentação (Swagger)
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        // só com token válido
-                        .requestMatchers("/usuarios/**").authenticated()
+                        // públicas: a vitrine (igual para todos) e a documentação (Swagger).
+                        // Nelas o token nem é lido (veja lerToken)
+                        .requestMatchers(ROTAS_PUBLICAS_SEM_TOKEN).permitAll()
+                        // só com token válido: dados de cada usuário (jogos, categorias, conquistas,
+                        // importação da Steam e o próprio usuário)
+                        .requestMatchers("/jogos/**", "/categorias/**", "/steam/**", "/usuarios/**").authenticated()
                         // QUALQUER outra rota: negar por padrão (veja negarRotasNaoListadas)
                         .anyRequest().access(negarRotasNaoListadas(rotasDaAplicacao)))
                 // JWT: pega o token (cookie ou cabeçalho, veja lerToken) e verifica com o jwtDecoder() acima
@@ -235,15 +239,20 @@ public class SegurancaConfig {
     }
 
     // De onde vem o token de cada requisição, nesta ordem:
-    //   a) /auth/** -> NENHUM (não autentica). Um cookie vencido ou adulterado faria o próprio /auth/login
-    //      responder 401, e a pessoa nunca mais conseguiria entrar. Essas rotas não precisam de login;
+    //   a) /auth/**, a vitrine e o Swagger -> NENHUM (não autentica). São rotas que não precisam de login,
+    //      e um cookie vencido ou adulterado faria elas responderem 401 (no /auth/login, a pessoa nunca
+    //      mais conseguiria entrar; na vitrine, a página inicial do front quebraria);
     //   b) o cookie "token" (o front Angular);
     //   c) o cabeçalho Authorization: Bearer <token> (Swagger, Postman, testes antigos).
     private BearerTokenResolver lerToken() {
-        RequestMatcher rotasDeAutenticacao = PathPatternRequestMatcher.pathPattern("/auth/**");
+        List<RequestMatcher> rotasSemToken = new ArrayList<>();
+        rotasSemToken.add(PathPatternRequestMatcher.pathPattern("/auth/**"));
+        for (String rota : ROTAS_PUBLICAS_SEM_TOKEN) {
+            rotasSemToken.add(PathPatternRequestMatcher.pathPattern(rota));
+        }
         DefaultBearerTokenResolver lerDoCabecalho = new DefaultBearerTokenResolver();
         return request -> {
-            if (rotasDeAutenticacao.matches(request)) {
+            if (rotasSemToken.stream().anyMatch(rota -> rota.matches(request))) {
                 return null;
             }
             String doCookie = cookieAutenticacao.lerToken(request);
